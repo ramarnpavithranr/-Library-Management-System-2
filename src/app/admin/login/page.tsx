@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Lock, User, ShieldCheck, ArrowRight, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -9,7 +9,7 @@ import { AnimatedLogoSplash } from '@/components/common/AnimatedLogoSplash';
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const { loginAdmin } = useAuth();
+  const { loginAdmin, user, isAdmin, isLoading: isAuthLoading } = useAuth();
 
   const [showSplash, setShowSplash] = useState(true);
   const [username, setUsername] = useState('');
@@ -18,6 +18,12 @@ export default function AdminLoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthLoading && user && isAdmin) {
+      router.replace('/admin');
+    }
+  }, [user, isAdmin, isAuthLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

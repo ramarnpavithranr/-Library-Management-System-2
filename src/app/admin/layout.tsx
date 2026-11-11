@@ -10,8 +10,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
 
-  // If on admin/login, do not wrap in the admin navigation shell
-  if (pathname === '/admin/login') {
+  useEffect(() => {
+    // If not authenticated and attempting to view a protected admin page, redirect to /admin
+    if (!isLoading && (!user || !isAdmin) && pathname !== '/admin/login' && pathname !== '/admin') {
+      router.push('/admin');
+    }
+  }, [user, isAdmin, isLoading, pathname, router]);
+
+  // If on admin/login, or if on /admin while not authenticated, do not wrap in the admin navigation shell
+  if (pathname === '/admin/login' || (pathname === '/admin' && (!user || !isAdmin))) {
     return <>{children}</>;
   }
 
@@ -27,4 +34,3 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </div>
   );
 }
-

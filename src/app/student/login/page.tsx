@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Lock, User, GraduationCap, ArrowRight, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -9,7 +9,7 @@ import { AnimatedLogoSplash } from '@/components/common/AnimatedLogoSplash';
 
 export default function StudentLoginPage() {
   const router = useRouter();
-  const { loginStudent } = useAuth();
+  const { loginStudent, user, isLoading: isAuthLoading } = useAuth();
 
   const [showSplash, setShowSplash] = useState(true);
   const [username, setUsername] = useState('');
@@ -17,6 +17,12 @@ export default function StudentLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthLoading && user && user.role === 'student') {
+      router.replace('/student');
+    }
+  }, [user, isAuthLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
