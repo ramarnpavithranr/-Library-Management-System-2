@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-burgundy: #6E1129;
+  --secondary-burgundy: #8E1634;
+  --dark-burgundy: #4A0818;
+  --light-cream: #FAF6F5;
+  --accent-rose: #FB7185;
+}
+
+body {
+  color: #1A1517;
+  background-color: #F8F5F5;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-tap-highlight-color: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #E8D3D7;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #C4929D;
+}
+
+/* Smooth glass effect */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(244, 225, 229, 0.7);
+}
+
+.glass-burgundy {
+  background: linear-gradient(135deg, rgba(110, 17, 41, 0.95) 0%, rgba(74, 8, 24, 0.98) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(251, 113, 133, 0.2);
+}
+
+/* Mobile App Frame Styling */
+.iphone-frame {
+  max-width: 425px;
+  min-height: 860px;
+  border-radius: 48px;
+  box-shadow: 0 25px 60px -15px rgba(52, 6, 18, 0.25), 0 0 0 12px #221518, 0 0 0 14px #442a30;
+  overflow: hidden;
+  position: relative;
+  margin: 0 auto;
+}
+
+/* Shimmer animation */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.shimmer-bg {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer-bg::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.2) 20%,
+    rgba(255, 255, 255, 0.5) 60%,
+    rgba(255, 255, 255, 0)
+  );
+  animation: shimmer 2s infinite;
+}
+
