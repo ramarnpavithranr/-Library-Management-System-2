@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CreditCard,
   ShieldCheck,
@@ -20,11 +20,31 @@ import { MembershipApplicationModal } from '@/components/student/MembershipAppli
 
 export default function StudentMembershipPage() {
   const { user } = useAuth();
-  const { memberships, students, applyForMembership, resetStudentMembership } = useLibrary();
+  const { memberships, students, applyForMembership, resetStudentMembership, refreshMemberships } = useLibrary();
 
-  const currentStudentId = user?.studentId || user?.id || '';
-  const myCard = memberships.find((m) => m.studentId === currentStudentId);
-  const currentStudent = students.find((s) => s.studentId === currentStudentId || s.id === user?.id);
+  useEffect(() => {
+    refreshMemberships();
+    const interval = setInterval(() => {
+      refreshMemberships();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const currentStudentId = user?.studentId || user?.id || user?.username || '';
+  const myCard = memberships.find(
+    (m) =>
+      m.studentId === currentStudentId ||
+      m.studentId === user?.id ||
+      m.studentId === user?.username ||
+      (user?.rollNumber && m.rollNumber && m.rollNumber.toUpperCase() === user.rollNumber.toUpperCase()) ||
+      (user?.username && m.studentId && m.studentId.toLowerCase() === user.username.toLowerCase())
+  );
+  const currentStudent = students.find(
+    (s) =>
+      s.studentId === currentStudentId ||
+      s.id === user?.id ||
+      (user?.username && s.username && s.username.toLowerCase() === user.username.toLowerCase())
+  );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isApplicationModalOpen, setIsApplicationModalOpen] = useState(false);
@@ -33,7 +53,7 @@ export default function StudentMembershipPage() {
     setIsApplicationModalOpen(true);
   };
 
-  const handleFormSubmit = (formData: {
+  const handleFormSubmit = async (formData: {
     studentName: string;
     rollNumber: string;
     department: string;
@@ -44,8 +64,8 @@ export default function StudentMembershipPage() {
     purpose: string;
   }) => {
     setIsSubmitting(true);
-    setTimeout(() => {
-      applyForMembership(currentStudentId, {
+    try {
+      const res = await applyForMembership(currentStudentId, {
         studentName: formData.studentName,
         rollNumber: formData.rollNumber,
         department: formData.department,
@@ -55,8 +75,16 @@ export default function StudentMembershipPage() {
         photo: formData.photo,
       });
       setIsSubmitting(false);
+      if (res && res.success === false) {
+        alert(`Database Error: ${res.message}`);
+        return;
+      }
       setIsApplicationModalOpen(false);
-    }, 400);
+      alert(res.message);
+    } catch (err: any) {
+      setIsSubmitting(false);
+      alert('Error submitting application: ' + err?.message);
+    }
   };
 
   const handleResetForTesting = () => {

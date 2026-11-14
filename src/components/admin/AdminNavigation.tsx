@@ -1,7 +1,7 @@
+
 'use client';
 
 import React from 'react';
-import Link from 'next/navigation';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -39,7 +39,7 @@ export const AdminNavigation: React.FC = () => {
   const unreadNotifs = notifications.filter(n => n.recipientType === 'admin' && !n.read).length;
 
   const mainNavItems: NavItem[] = [
-    { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+    { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'Books Catalog', href: '/admin/books', icon: BookOpen },
     { name: 'Categories', href: '/admin/categories', icon: FolderTree },
     { name: 'Student Records', href: '/admin/students', icon: Users },
@@ -58,12 +58,12 @@ export const AdminNavigation: React.FC = () => {
 
   const handleLogout = () => {
     logout();
-    router.push('/admin/login');
+    router.push('/admin');
   };
 
   // Mobile Bottom Navigation Bar Items (matching Proton Vault design)
   const mobileNavItems = [
-    { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+    { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'Books', href: '/admin/books', icon: BookOpen },
     { name: 'Issue', href: '/admin/issue', icon: PlusCircle, isCenter: true },
     { name: 'Requests', href: '/admin/pre-bookings', icon: BookmarkCheck, badge: stats.pendingPreBooks },
@@ -95,17 +95,16 @@ export const AdminNavigation: React.FC = () => {
               const Icon = item.icon;
               const isActive =
                 pathname === item.href ||
-                (item.href === '/admin' && (pathname === '/admin' || pathname === '/admin/dashboard')) ||
-                (item.href !== '/admin' && item.href !== '/admin/dashboard' && pathname.startsWith(item.href));
+                (item.href === '/admin/dashboard' && (pathname === '/admin' || pathname === '/admin/dashboard')) ||
+                (item.href !== '/admin/dashboard' && pathname.startsWith(item.href));
               return (
                 <button
                   key={item.href}
                   onClick={() => router.push(item.href)}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
-                    isActive
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition-all ${isActive
                       ? 'bg-gradient-to-r from-burgundy-800 to-burgundy-900 text-white shadow-burgundy-glow'
                       : 'text-charcoal-700 hover:bg-burgundy-50 hover:text-burgundy-900'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     <Icon size={17} className={isActive ? 'text-rose-200' : 'text-charcoal-400'} />
@@ -113,9 +112,8 @@ export const AdminNavigation: React.FC = () => {
                   </div>
                   {item.badge !== undefined && item.badge > 0 && (
                     <span
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                        isActive ? 'bg-white text-burgundy-900' : 'bg-rose-500 text-white'
-                      }`}
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white text-burgundy-900' : 'bg-rose-500 text-white'
+                        }`}
                     >
                       {item.badge}
                     </span>
@@ -135,11 +133,10 @@ export const AdminNavigation: React.FC = () => {
                   <button
                     key={item.href}
                     onClick={() => router.push(item.href)}
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition-all mt-1 ${
-                      isActive
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition-all mt-1 ${isActive
                         ? 'bg-gradient-to-r from-burgundy-800 to-burgundy-900 text-white shadow-burgundy-glow'
                         : 'text-charcoal-700 hover:bg-burgundy-50 hover:text-burgundy-900'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-3">
                       <Icon size={17} className={isActive ? 'text-rose-200' : 'text-charcoal-400'} />
@@ -189,7 +186,7 @@ export const AdminNavigation: React.FC = () => {
         <div className="bg-white/95 backdrop-blur-xl border border-burgundy-100/90 rounded-full shadow-2xl px-3 py-2 flex items-center justify-around">
           {mobileNavItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href;
+            const isActive = pathname === item.href || (item.href === '/admin/dashboard' && pathname === '/admin');
 
             if (item.isCenter) {
               return (
@@ -212,9 +209,8 @@ export const AdminNavigation: React.FC = () => {
               <button
                 key={item.href}
                 onClick={() => router.push(item.href)}
-                className={`flex flex-col items-center py-1 px-2.5 rounded-2xl relative transition-all active:scale-95 ${
-                  isActive ? 'text-burgundy-900 font-bold' : 'text-charcoal-400 font-medium'
-                }`}
+                className={`flex flex-col items-center py-1 px-2.5 rounded-2xl relative transition-all active:scale-95 ${isActive ? 'text-burgundy-900 font-bold' : 'text-charcoal-400 font-medium'
+                  }`}
               >
                 <div className="relative">
                   <Icon size={20} className={isActive ? 'text-burgundy-800' : 'text-charcoal-400'} />

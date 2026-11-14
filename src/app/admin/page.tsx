@@ -1,18 +1,27 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import AdminLoginPage from './login/page';
 import AdminDashboardPage from './dashboard/page';
 
-export default function AdminIndexPage() {
+export default function AdminPage() {
+  const router = useRouter();
   const { user, isAdmin, isLoading } = useAuth();
 
-  // If authenticated as admin, load the Admin Dashboard
+  useEffect(() => {
+    // If already authenticated as admin, redirect directly to Admin Dashboard
+    if (!isLoading && user && isAdmin) {
+      router.replace('/admin/dashboard');
+    }
+  }, [user, isAdmin, isLoading, router]);
+
+  // If authenticated as admin, display Admin Dashboard
   if (!isLoading && user && isAdmin) {
     return <AdminDashboardPage />;
   }
 
-  // By default, or when not authenticated as admin, load the Admin Login page
+  // Directly renders the Admin Login Page
   return <AdminLoginPage />;
 }

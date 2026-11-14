@@ -113,13 +113,18 @@ export default function AdminBooksPage() {
     setIsEditModalOpen(true);
   };
 
-  const handleSaveAdd = (e: React.FormEvent) => {
+  const handleSaveAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.author) {
       alert('Please fill in title and author');
       return;
     }
-    addBook(formData);
+    const res = await addBook(formData);
+    if (!res.success) {
+      alert(`Database Error: ${res.message}`);
+      return;
+    }
+    alert(res.message);
     setIsAddModalOpen(false);
   };
 

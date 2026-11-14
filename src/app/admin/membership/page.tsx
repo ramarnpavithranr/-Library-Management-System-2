@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CreditCard,
   CheckCircle,
@@ -20,7 +20,15 @@ import { DigitalMembershipCard } from '@/components/student/DigitalMembershipCar
 import confetti from 'canvas-confetti';
 
 export default function AdminMembershipPage() {
-  const { memberships, approveMembership, rejectMembership } = useLibrary();
+  const { memberships, approveMembership, rejectMembership, refreshMemberships } = useLibrary();
+
+  useEffect(() => {
+    refreshMemberships();
+    const interval = setInterval(() => {
+      refreshMemberships();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'all'>('pending');

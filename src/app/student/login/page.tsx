@@ -20,7 +20,7 @@ export default function StudentLoginPage() {
 
   useEffect(() => {
     if (!isAuthLoading && user && user.role === 'student') {
-      router.replace('/student');
+      router.replace('/student/dashboard');
     }
   }, [user, isAuthLoading, router]);
 
@@ -33,7 +33,7 @@ export default function StudentLoginPage() {
       const res = await loginStudent(username, password);
       setIsLoading(false);
       if (res.success) {
-        router.push('/student');
+        router.push('/student/dashboard');
       } else {
         setError(res.message);
       }
@@ -91,10 +91,10 @@ export default function StudentLoginPage() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Student Username */}
+              {/* Student Username or Roll Number */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-charcoal-700 mb-1.5">
-                  Student Username
+                  Student Username or Roll Number
                 </label>
                 <div className="relative flex items-center">
                   <User size={17} className="absolute left-3.5 text-charcoal-400 pointer-events-none" />

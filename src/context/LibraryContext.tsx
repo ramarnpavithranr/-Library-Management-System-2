@@ -51,7 +51,7 @@ interface LibraryContextType {
   };
 
   // Book methods
-  addBook: (book: Omit<Book, 'id'>) => Book;
+  addBook: (book: Omit<Book, 'id'>) => Promise<{ success: boolean; message: string; book?: Book }>;
   bulkAddBooks: (books: Omit<Book, 'id'>[]) => number;
   updateBook: (id: string, book: Partial<Book>) => void;
   deleteBook: (id: string) => void;
@@ -88,10 +88,11 @@ interface LibraryContextType {
       email?: string;
       photo?: string;
     }
-  ) => { success: boolean; message: string };
+  ) => Promise<{ success: boolean; message: string }>;
   approveMembership: (membershipId: string) => void;
   rejectMembership: (membershipId: string) => void;
   resetStudentMembership: (studentId: string) => void;
+  refreshMemberships: () => Promise<void>;
 
   // Fines
   addFine: (fine: Omit<FineRecord, 'id'>) => void;
@@ -120,41 +121,71 @@ const STORAGE_KEYS = {
 
 const BASE_CATEGORIES: Category[] = INITIAL_CATEGORIES.map(c => ({ ...c, bookCount: 0 }));
 
-export const mapSupabaseBookToFrontend = (row: any): Book => ({
-  id: String(row.id || row.book_id || row.Book_id || `bk-${Date.now()}`),
-  title: row.title || row.Title || 'Untitled Book',
-  author: row.author || row.Author || 'Unknown Author',
-  category: row.category || row.Category || 'Computer Science Core',
-  isbn: row.ISBN || row.isbn || '',
-  quantity: Number(row.available_quantity || row.quantity || row.Available_quantity || 1),
-  availableQuantity: Number(row.available_quantity || row.availableQuantity || row.Available_quantity || 1),
-  shelfLocation: row.shelfLocation || row.shelf_location || row['Shelf Location'] || 'Main Stacks',
-  coverImage: row.coverImage || row.cover_image || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=600&auto=format&fit=crop',
-  description: row.description || '',
-  edition: row.edition || '1st Edition',
-  publisher: row.publisher || 'Academic Press',
-  publicationYear: Number(row.publicationYear || row.publication_year) || 2024,
-});
+export const mapSupabaseBookToFrontend = (row: any): Book => {
+  const editionStr = row.Edition
+    ? typeof row.Edition === 'number'
+      ? `${row.Edition}th Edition`
+      : String(row.Edition)
+    : row.edition || '1st Edition';
 
-export const mapFrontendBookToSupabase = (b: Book | Omit<Book, 'id'>, id?: string) => ({
-  id: id || (b as any).id || `bk-${Date.now()}`,
-  book_id: (b as any).id || id || `bk-${Date.now()}`,
-  title: b.title,
-  author: b.author,
-  category: b.category,
-  ISBN: b.isbn || (b as any).ISBN || '',
-  available_quantity: typeof b.availableQuantity === 'number' ? b.availableQuantity : b.quantity,
-});
+  const isbnStr = row['ISBN Number']
+    ? String(row['ISBN Number'])
+    : row.ISBN || row.isbn || '';
+
+  const availableCount = Number(row['Available Copies'] ?? row.available_quantity ?? row.availableQuantity ?? 1);
+  const totalCount = Number(row.total_copies ?? row.quantity ?? availableCount);
+
+  return {
+    id: String(row.id || row.book_id || row.Book_id || `bk-${Date.now()}`),
+    title: row['Book Title'] || row.title || row.Title || 'Untitled Book',
+    author: row.Author || row.author || 'Unknown Author',
+    category: row.Category || row.category || 'Computer Science Core',
+    isbn: isbnStr,
+    quantity: totalCount,
+    availableQuantity: availableCount,
+    shelfLocation: row.shelf_location || row['Shelf Location'] || row.shelfLocation || 'Main Stacks',
+    coverImage:
+      row.cover_image ||
+      row.coverImage ||
+      'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=600&auto=format&fit=crop',
+    description: row.description || '',
+    edition: editionStr,
+    publisher: row.Publisher || row.publisher || 'Academic Press',
+    publicationYear: Number(row.publication_year || row.publicationYear) || 2024,
+  };
+};
+
+export const mapFrontendBookToSupabase = (b: Book | Omit<Book, 'id'>) => {
+  const numericIsbn = parseInt(String(b.isbn || '').replace(/\D/g, ''), 10) || Math.floor(1000000000 + Math.random() * 9000000000);
+  const numericEdition = parseInt(String(b.edition || '').replace(/\D/g, ''), 10) || 1;
+  const availableCount = Number(b.availableQuantity ?? b.quantity ?? 1);
+  const totalCount = Number(b.quantity ?? availableCount);
+
+  return {
+    "Book Title": b.title,
+    Author: b.author,
+    Category: b.category,
+    Edition: numericEdition,
+    Publisher: b.publisher || 'Academic Press',
+    "ISBN Number": numericIsbn,
+    "Available Copies": availableCount,
+    shelf_location: b.shelfLocation || 'Main Stacks',
+    cover_image: b.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=600&auto=format&fit=crop',
+    description: b.description || 'Central Library acquisition.',
+    publication_year: Number(b.publicationYear) || 2024,
+    total_copies: totalCount,
+  };
+};
 
 export const mapSupabaseStudentToFrontend = (row: any): Student => ({
   id: String(row.id || `stu-${Date.now()}`),
-  studentId: row.student_id || row.studentId || row.id || (row.username ? `STU-${row.username}` : `STU-${Date.now()}`),
-  username: row.username || row.Username || '',
-  name: row.name || row.Name || 'Student Member',
-  rollNumber: row.roll_number || row['Roll number'] || row['Roll Number'] || row.rollNumber || '',
-  email: row.email || row.Email || (row.username ? `${String(row.username).toLowerCase()}@sreesakthi.edu.in` : ''),
-  phone: row.phone || '',
-  department: row.department || row.Department || 'Computer Science & Engineering',
+  studentId: row.auth_id || row.student_id || row.studentId || (row.Username || row.username ? `STU-${row.Username || row.username}` : `STU-${row.id}`),
+  username: row.Username || row.username || '',
+  name: row.Name || row.name || 'Student Member',
+  rollNumber: row['Roll Number'] || row['Roll number'] || row.roll_number || row.rollNumber || '',
+  email: row.email || row.Email || (row.Username || row.username ? `${String(row.Username || row.username).toLowerCase()}@sreesakthi.edu.in` : ''),
+  phone: row['Phone Number'] ? String(row['Phone Number']) : (row.phone || ''),
+  department: row.Department || row.department || 'Computer Science & Engineering',
   college: row.college || row.College || 'Sree Sakthi Engineering College',
   year: row.year || row.Year || '1st Year',
   section: row.section || row.Section || 'A',
@@ -164,13 +195,19 @@ export const mapSupabaseStudentToFrontend = (row: any): Student => ({
   joinedDate: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
 });
 
-export const mapFrontendStudentToSupabase = (s: Student | Omit<Student, 'id' | 'joinedDate'>, id?: string) => ({
-  id: id || (s as any).id || `stu-${Date.now()}`,
-  username: s.username,
-  name: s.name,
-  roll_number: s.rollNumber || (s as any).roll_number || '',
-  college: s.college || '',
-});
+export const mapFrontendStudentToSupabase = (s: Student | Omit<Student, 'id' | 'joinedDate'>) => {
+  const numericPhone = s.phone ? parseInt(String(s.phone).replace(/\D/g, ''), 10) : null;
+  const row: any = {
+    Name: s.name,
+    Username: s.username,
+    Department: s.department || 'Computer Science & Engineering',
+    "Roll Number": s.rollNumber || '',
+  };
+  if (numericPhone && !isNaN(numericPhone)) {
+    row["Phone Number"] = numericPhone;
+  }
+  return row;
+};
 
 const safeSupabaseSync = async (task: () => PromiseLike<any>) => {
   try {
@@ -183,6 +220,19 @@ const safeSupabaseSync = async (task: () => PromiseLike<any>) => {
     console.warn('Supabase operation warning:', err);
     return null;
   }
+};
+
+const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  try {
+    const supa = getSupabaseClient();
+    if (supa) {
+      const { data } = await supa.auth.getSession();
+      if (data?.session?.access_token) {
+        return { Authorization: `Bearer ${data.session.access_token}` };
+      }
+    }
+  } catch (_) {}
+  return {};
 };
 
 export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -198,9 +248,6 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Load from LocalStorage and Supabase on mount
   useEffect(() => {
-    let localBooks: Book[] = [];
-    let localStudents: Student[] = [];
-
     try {
       const storedBooks = localStorage.getItem(STORAGE_KEYS.BOOKS);
       const storedCategories = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
@@ -211,14 +258,8 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const storedFines = localStorage.getItem(STORAGE_KEYS.FINES);
       const storedNotifs = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
 
-      if (storedBooks) {
-        localBooks = JSON.parse(storedBooks);
-        setBooks(localBooks);
-      }
-      if (storedStudents) {
-        localStudents = JSON.parse(storedStudents);
-        setStudents(localStudents);
-      }
+      if (storedBooks) setBooks(JSON.parse(storedBooks));
+      if (storedStudents) setStudents(JSON.parse(storedStudents));
       if (storedCategories) setCategories(JSON.parse(storedCategories));
       if (storedMemberships) setMemberships(JSON.parse(storedMemberships));
       if (storedBorrows) setBorrowRecords(JSON.parse(storedBorrows));
@@ -231,54 +272,30 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setIsLoaded(true);
     }
 
-    // Connect to Supabase tables 'Books' / 'books' and 'Students' / 'students'
+    // Sync memberships from central server API across devices
+    fetch('/api/membership')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && Array.isArray(data.memberships)) {
+          setMemberships(data.memberships);
+        }
+      })
+      .catch((err) => console.warn('Notice loading server memberships:', err));
+
+    // Connect to Supabase tables 'Books' and 'Students'
     const supabase = getSupabaseClient();
     if (supabase) {
       safeSupabaseSync(async () => {
-        let bData: any[] | null = null;
-        const res1 = await supabase.from('Books').select('*');
-        if (!res1.error && Array.isArray(res1.data) && res1.data.length > 0) {
-          bData = res1.data;
-        } else {
-          const res2 = await supabase.from('books').select('*');
-          if (!res2.error && Array.isArray(res2.data)) {
-            bData = res2.data;
-          }
-        }
-        if (bData && bData.length > 0) {
-          setBooks(bData.map(mapSupabaseBookToFrontend));
+        const { data, error } = await supabase.from('Books').select('*').order('id', { ascending: true });
+        if (!error && Array.isArray(data)) {
+          setBooks(data.map(mapSupabaseBookToFrontend));
         }
       });
 
       safeSupabaseSync(async () => {
-        let sData: any[] | null = null;
-        const res1 = await supabase.from('Students').select('*');
-        if (!res1.error && Array.isArray(res1.data) && res1.data.length > 0) {
-          sData = res1.data;
-        } else {
-          const res2 = await supabase.from('students').select('*');
-          if (!res2.error && Array.isArray(res2.data)) {
-            sData = res2.data;
-          }
-        }
-
-        if (sData && sData.length > 0) {
-          const mapped = sData.map(mapSupabaseStudentToFrontend);
-          setStudents((prev) => {
-            const merged = [...mapped];
-            prev.forEach((localS) => {
-              if (
-                !merged.some(
-                  (m) =>
-                    m.id === localS.id ||
-                    (m.username && localS.username && m.username.toLowerCase() === localS.username.toLowerCase())
-                )
-              ) {
-                merged.push(localS);
-              }
-            });
-            return merged;
-          });
+        const { data, error } = await supabase.from('Students').select('*').order('id', { ascending: true });
+        if (!error && Array.isArray(data)) {
+          setStudents(data.map(mapSupabaseStudentToFrontend));
         }
       });
     }
@@ -343,20 +360,46 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   // Book methods
-  const addBook = (bookData: Omit<Book, 'id'>) => {
-    const newBook: Book = {
-      ...bookData,
-      id: `bk-${Date.now()}`
-    };
-    setBooks(prev => [newBook, ...prev]);
+  const addBook = async (
+    bookData: Omit<Book, 'id'>
+  ): Promise<{ success: boolean; message: string; book?: Book }> => {
+    try {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch('/api/books', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify(bookData),
+      });
 
-    // Sync to Supabase books table
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      safeSupabaseSync(() => supabase.from('books').insert([mapFrontendBookToSupabase(newBook, newBook.id)]));
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success) {
+        const errorMsg = data?.message || data?.error || 'Database insert failed for Books table.';
+        console.error('addBook failed:', errorMsg);
+        return {
+          success: false,
+          message: errorMsg,
+        };
+      }
+
+      const createdBook: Book = data.book || {
+        ...bookData,
+        id: `bk-${Date.now()}`,
+      };
+
+      setBooks((prev) => [createdBook, ...prev]);
+      return {
+        success: true,
+        message: data.message || `Book "${bookData.title}" stored in Supabase Books table successfully!`,
+        book: createdBook,
+      };
+    } catch (err: any) {
+      console.error('Network error during addBook:', err);
+      return {
+        success: false,
+        message: err?.message || 'Network error while attempting to save book to Supabase.',
+      };
     }
-
-    return newBook;
   };
 
   const bulkAddBooks = (newBooksData: Omit<Book, 'id'>[]): number => {
@@ -374,11 +417,11 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setBooks(prev => [...createdBooks, ...prev]);
 
-    // Sync to Supabase books table
+    // Sync to Supabase Books table
     const supabase = getSupabaseClient();
     if (supabase) {
-      const supaRows = createdBooks.map(b => mapFrontendBookToSupabase(b, b.id));
-      safeSupabaseSync(() => supabase.from('books').insert(supaRows));
+      const supaRows = createdBooks.map(b => mapFrontendBookToSupabase(b));
+      safeSupabaseSync(() => supabase.from('Books').insert(supaRows));
     }
 
     setNotifications(prev => [
@@ -399,17 +442,45 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateBook = (id: string, updates: Partial<Book>) => {
     setBooks(prev => prev.map(b => (b.id === id ? { ...b, ...updates } : b)));
+
+    getAuthHeaders().then((authHeaders) => {
+      fetch('/api/books', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ id, ...updates }),
+      }).catch(err => console.warn('Notice updating book via API:', err));
+    });
+
     const supabase = getSupabaseClient();
     if (supabase) {
-      safeSupabaseSync(() => supabase.from('books').update(updates).eq('id', id));
+      const supaUpdates: any = {};
+      if (updates.title) supaUpdates["Book Title"] = updates.title;
+      if (updates.author) supaUpdates.Author = updates.author;
+      if (updates.category) supaUpdates.Category = updates.category;
+      if (updates.publisher) supaUpdates.Publisher = updates.publisher;
+      if (updates.availableQuantity !== undefined) supaUpdates["Available Copies"] = updates.availableQuantity;
+
+      if (!isNaN(Number(id))) {
+        safeSupabaseSync(() => supabase.from('Books').update(supaUpdates).eq('id', Number(id)));
+      } else {
+        safeSupabaseSync(() => supabase.from('Books').update(supaUpdates).eq('Book Title', updates.title || ''));
+      }
     }
   };
 
   const deleteBook = (id: string) => {
     setBooks(prev => prev.filter(b => b.id !== id));
+
+    getAuthHeaders().then((authHeaders) => {
+      fetch(`/api/books?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { ...authHeaders },
+      }).catch(err => console.warn('Notice deleting book via API:', err));
+    });
+
     const supabase = getSupabaseClient();
-    if (supabase) {
-      safeSupabaseSync(() => supabase.from('books').delete().eq('id', id));
+    if (supabase && !isNaN(Number(id))) {
+      safeSupabaseSync(() => supabase.from('Books').delete().eq('id', Number(id)));
     }
   };
 
@@ -459,9 +530,21 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // 2. Call server-side API route handler /api/admin/create-student
     try {
+      const supa = getSupabaseClient();
+      let adminToken = '';
+      if (supa) {
+        try {
+          const { data: sessionData } = await supa.auth.getSession();
+          adminToken = sessionData?.session?.access_token || '';
+        } catch (_) {}
+      }
+
       const res = await fetch('/api/admin/create-student', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        },
         body: JSON.stringify({
           username: studentUsername,
           password: studentData.password,
@@ -480,20 +563,19 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       if (res.ok && data?.success) {
         if (data.user?.id) assignedId = data.user.id;
-        if (data.authNotice) {
-          console.info('Supabase Auth notice:', data.authNotice);
-        }
-      } else if (!res.ok && data?.message) {
-        // Return duplicate or validation error directly to the Admin
+      } else {
+        // Return database or auth error directly to the Admin without creating inconsistent records
         return {
           success: false,
-          message: data.message,
+          message: data?.message || 'Failed to create student account and insert into database.',
         };
-      } else {
-        console.warn('Backend student provisioning notice:', data?.message);
       }
     } catch (err: any) {
-      console.warn('Network notice during student provisioning:', err?.message);
+      console.warn('Network error during student provisioning:', err?.message);
+      return {
+        success: false,
+        message: err?.message || 'Network error while attempting to create student account.',
+      };
     }
 
     // 3. Assemble complete newStudent record
@@ -605,18 +687,13 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.warn('LocalStorage save error in bulkAddStudents:', storageErr);
     }
 
-    // Sync to Supabase students table (only id, username, name, roll_number)
+    // Sync to Supabase Students table
     if (supabase) {
-      const supaRows = createdStudents.map((s) => ({
-        id: s.id,
-        username: s.username,
-        name: s.name,
-        roll_number: s.rollNumber,
-      }));
+      const supaRows = createdStudents.map((s) => mapFrontendStudentToSupabase(s));
       safeSupabaseSync(async () => {
         const r1 = await supabase.from('Students').insert(supaRows);
-        if (r1.error) {
-          await supabase.from('students').insert(supaRows);
+        if (r1?.error) {
+          console.warn('Notice syncing bulk students to Supabase Students table:', r1.error.message);
         }
       });
     }
@@ -644,13 +721,24 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const supabase = getSupabaseClient();
     if (supabase) {
       const allowedCols: any = {};
-      if (updates.name !== undefined) allowedCols.name = updates.name;
-      if (updates.username !== undefined) allowedCols.username = updates.username;
-      if (updates.rollNumber !== undefined) allowedCols.roll_number = updates.rollNumber;
+      if (updates.name !== undefined) allowedCols.Name = updates.name;
+      if (updates.username !== undefined) allowedCols.Username = updates.username;
+      if (updates.rollNumber !== undefined) allowedCols["Roll Number"] = updates.rollNumber;
+      if (updates.department !== undefined) allowedCols.Department = updates.department;
+      if (updates.phone !== undefined) {
+        const numPhone = parseInt(String(updates.phone).replace(/\D/g, ''), 10);
+        if (!isNaN(numPhone)) allowedCols["Phone Number"] = numPhone;
+      }
       if (Object.keys(allowedCols).length > 0) {
-        safeSupabaseSync(() =>
-          supabase.from('students').update(allowedCols).or(`id.eq.${id},username.eq.${id}`)
-        );
+        if (!isNaN(Number(id))) {
+          safeSupabaseSync(() =>
+            supabase.from('Students').update(allowedCols).eq('id', Number(id))
+          );
+        } else {
+          safeSupabaseSync(() =>
+            supabase.from('Students').update(allowedCols).eq('Username', updates.username || id)
+          );
+        }
       }
     }
   };
@@ -892,7 +980,31 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   // Membership
-  const applyForMembership = (
+  const refreshMemberships = async () => {
+    try {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch('/api/membership', {
+        headers: { ...authHeaders },
+      });
+      const data = await res.json();
+      if (data?.success && Array.isArray(data.memberships)) {
+        setMemberships((prev) => {
+          const serverList: MembershipCard[] = data.memberships;
+          const merged = [...serverList];
+          prev.forEach((localM) => {
+            if (!merged.some((m) => m.id === localM.id || m.studentId === localM.studentId)) {
+              merged.push(localM);
+            }
+          });
+          return merged;
+        });
+      }
+    } catch (e) {
+      console.warn('Notice in refreshMemberships:', e);
+    }
+  };
+
+  const applyForMembership = async (
     studentId: string,
     photoOrData?: string | {
       studentName?: string;
@@ -903,47 +1015,41 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       email?: string;
       photo?: string;
     }
-  ) => {
-    const student = students.find(s => s.studentId === studentId || s.id === studentId);
-    if (!student) return { success: false, message: 'Student profile not found.' };
+  ): Promise<{ success: boolean; message: string }> => {
+    const isObj = typeof photoOrData === 'object' && photoOrData !== null;
+    const photo = isObj ? photoOrData.photo : photoOrData;
 
-    const existing = memberships.find(m => m.studentId === student.studentId);
+    // Flexible student lookup by studentId, id, username or rollNumber
+    const student = students.find(
+      s =>
+        s.studentId === studentId ||
+        s.id === studentId ||
+        (s.username && s.username.toLowerCase() === String(studentId).toLowerCase()) ||
+        (isObj && photoOrData.rollNumber && s.rollNumber && s.rollNumber.toUpperCase() === photoOrData.rollNumber.toUpperCase())
+    );
+
+    const studentName = (isObj && photoOrData.studentName) || student?.name || 'Student Member';
+    const rollNumber = (isObj && photoOrData.rollNumber) || student?.rollNumber || '';
+    const department = (isObj && photoOrData.department) || student?.department || 'Computer Science & Engineering';
+    const year = (isObj && photoOrData.year) || student?.year || '1st Year';
+    const finalStudentId = student?.studentId || student?.id || studentId || `stu-${Date.now()}`;
+
+    const existing = memberships.find(
+      m =>
+        m.studentId === finalStudentId ||
+        (rollNumber && m.rollNumber && m.rollNumber.toUpperCase() === rollNumber.toUpperCase())
+    );
+
     if (existing && existing.status === 'approved') {
       return { success: false, message: 'You already have an active Digital Membership Card!' };
     }
     if (existing && existing.status === 'pending') {
-      return { success: false, message: 'Your application is already pending approval.' };
-    }
-
-    const isObj = typeof photoOrData === 'object' && photoOrData !== null;
-    const photo = isObj ? photoOrData.photo : photoOrData;
-    const studentName = (isObj && photoOrData.studentName) || student.name;
-    const rollNumber = (isObj && photoOrData.rollNumber) || student.rollNumber;
-    const department = (isObj && photoOrData.department) || student.department;
-    const year = (isObj && photoOrData.year) || student.year;
-
-    // Also update student profile if phone/email/photo changed
-    if (isObj && (photoOrData.phone || photoOrData.email || photoOrData.photo)) {
-      setStudents(prev =>
-        prev.map(s =>
-          s.studentId === student.studentId
-            ? {
-                ...s,
-                ...(photoOrData.phone ? { phone: photoOrData.phone } : {}),
-                ...(photoOrData.email ? { email: photoOrData.email } : {}),
-                ...(photoOrData.photo ? { profileImage: photoOrData.photo } : {}),
-                ...(photoOrData.studentName ? { name: photoOrData.studentName } : {}),
-                ...(photoOrData.department ? { department: photoOrData.department } : {}),
-                ...(photoOrData.year ? { year: photoOrData.year } : {}),
-              }
-            : s
-        )
-      );
+      return { success: false, message: 'Your application is already pending administrator approval.' };
     }
 
     const newApp: MembershipCard = {
       id: `mem-${Date.now()}`,
-      studentId: student.studentId,
+      studentId: finalStudentId,
       studentName,
       rollNumber,
       department,
@@ -951,25 +1057,78 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       membershipId: `LIB-MEM-PENDING-${Date.now().toString().slice(-4)}`,
       appliedDate: new Date().toISOString().split('T')[0],
       status: 'pending',
-      photo: photo || student.profileImage
+      photo: photo || student?.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=400&auto=format&fit=crop'
     };
 
-    setMemberships(prev => [newApp, ...prev.filter(m => m.studentId !== student.studentId)]);
+    try {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch('/api/membership', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          ...newApp,
+          phone: isObj ? photoOrData.phone : '',
+          email: isObj ? photoOrData.email : '',
+        }),
+      });
 
-    setNotifications(prev => [
-      {
-        id: `notif-${Date.now()}`,
-        recipientType: 'admin',
-        title: 'New Membership Application',
-        message: `${studentName} (${rollNumber}) applied for a Digital Library Card.`,
-        timestamp: 'Just now',
-        read: false,
-        type: 'info'
-      },
-      ...prev
-    ]);
+      const data = await res.json().catch(() => null);
 
-    return { success: true, message: 'Membership application submitted successfully!' };
+      if (!res.ok || !data?.success) {
+        const errorMsg = data?.message || data?.error || 'Database insert failed for membership table.';
+        console.error('applyForMembership database error:', errorMsg);
+        return {
+          success: false,
+          message: errorMsg,
+        };
+      }
+
+      const savedApp: MembershipCard = data.membership || newApp;
+      setMemberships(prev => [savedApp, ...prev.filter(m => m.studentId !== finalStudentId)]);
+
+      // Also update student profile if phone/email/photo changed
+      if (student && isObj && (photoOrData.phone || photoOrData.email || photoOrData.photo)) {
+        setStudents(prev =>
+          prev.map(s =>
+            s.studentId === student.studentId
+              ? {
+                  ...s,
+                  ...(photoOrData.phone ? { phone: photoOrData.phone } : {}),
+                  ...(photoOrData.email ? { email: photoOrData.email } : {}),
+                  ...(photoOrData.photo ? { profileImage: photoOrData.photo } : {}),
+                  ...(photoOrData.studentName ? { name: photoOrData.studentName } : {}),
+                  ...(photoOrData.department ? { department: photoOrData.department } : {}),
+                  ...(photoOrData.year ? { year: photoOrData.year } : {}),
+                }
+              : s
+          )
+        );
+      }
+
+      setNotifications(prev => [
+        {
+          id: `notif-${Date.now()}`,
+          recipientType: 'admin',
+          title: 'New Membership Pass Request 🪪',
+          message: `${studentName} (${rollNumber}) requested a Digital Library Card.`,
+          timestamp: 'Just now',
+          read: false,
+          type: 'info'
+        },
+        ...prev
+      ]);
+
+      return {
+        success: true,
+        message: data.message || 'Membership application submitted successfully and stored in Supabase! Awaiting Admin approval.',
+      };
+    } catch (err: any) {
+      console.error('Network error during applyForMembership:', err);
+      return {
+        success: false,
+        message: err?.message || 'Network error while attempting to submit membership application.',
+      };
+    }
   };
 
   const approveMembership = (membershipId: string) => {
@@ -997,6 +1156,19 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       })
     );
 
+    // Sync approval to server API so Student sees approved status on mobile/system
+    getAuthHeaders().then((authHeaders) => {
+      fetch('/api/membership', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          id: membershipId,
+          status: 'approved',
+          expiryDate: expiryDateStr,
+        }),
+      }).catch(err => console.warn('Server sync notice for approve:', err));
+    });
+
     const mem = memberships.find(m => m.id === membershipId || m.membershipId === membershipId);
     if (mem) {
       setNotifications(prev => [
@@ -1019,10 +1191,28 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setMemberships(prev =>
       prev.map(m => (m.id === membershipId || m.membershipId === membershipId ? { ...m, status: 'rejected' } : m))
     );
+
+    getAuthHeaders().then((authHeaders) => {
+      fetch('/api/membership', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          id: membershipId,
+          status: 'rejected',
+        }),
+      }).catch(err => console.warn('Server sync notice for reject:', err));
+    });
   };
 
   const resetStudentMembership = (studentId: string) => {
     setMemberships(prev => prev.filter(m => m.studentId !== studentId));
+
+    getAuthHeaders().then((authHeaders) => {
+      fetch(`/api/membership?studentId=${encodeURIComponent(studentId)}`, {
+        method: 'DELETE',
+        headers: { ...authHeaders },
+      }).catch(err => console.warn('Server sync notice for delete:', err));
+    });
   };
 
   // Fine Management
@@ -1095,6 +1285,7 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         approveMembership,
         rejectMembership,
         resetStudentMembership,
+        refreshMemberships,
         addFine,
         payFine,
         markNotificationAsRead,

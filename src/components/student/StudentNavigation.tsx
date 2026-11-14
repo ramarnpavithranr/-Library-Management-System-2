@@ -47,7 +47,7 @@ export const StudentNavigation: React.FC = () => {
   ).length;
 
   const mainNavItems: NavItem[] = [
-    { name: 'Home Dashboard', href: '/student', icon: Home },
+    { name: 'Home Dashboard', href: '/student/dashboard', icon: Home },
     { name: 'Browse Library', href: '/student/books', icon: Library },
     { name: 'Book Categories', href: '/student/categories', icon: FolderTree },
     { name: 'Books', href: '/student/my-books', icon: BookMarked, badge: myBorrows },
@@ -64,7 +64,7 @@ export const StudentNavigation: React.FC = () => {
 
   const handleLogout = () => {
     logout();
-    router.push('/student/login');
+    router.push('/student');
   };
 
   // Quick Action Menu Items (Opened by the small center icon)
@@ -153,8 +153,8 @@ export const StudentNavigation: React.FC = () => {
               const Icon = item.icon;
               const isActive =
                 pathname === item.href ||
-                (item.href === '/student' && (pathname === '/student' || pathname === '/student/dashboard')) ||
-                (item.href !== '/student' && item.href !== '/student/dashboard' && pathname.startsWith(item.href));
+                (item.href === '/student/dashboard' && (pathname === '/student' || pathname === '/student/dashboard')) ||
+                (item.href !== '/student/dashboard' && pathname.startsWith(item.href));
               return (
                 <button
                   key={item.href}
@@ -254,7 +254,7 @@ export const StudentNavigation: React.FC = () => {
           
           {/* 1. Left: Home */}
           <button
-            onClick={() => router.push('/student')}
+            onClick={() => router.push('/student/dashboard')}
             className={`flex flex-col items-center py-1 px-3 rounded-2xl transition-all active:scale-95 ${
               isHomeActive ? 'text-burgundy-900 font-extrabold' : 'text-charcoal-400 font-medium'
             }`}

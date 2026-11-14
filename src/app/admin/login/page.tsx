@@ -21,7 +21,7 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     if (!isAuthLoading && user && isAdmin) {
-      router.replace('/admin');
+      router.replace('/admin/dashboard');
     }
   }, [user, isAdmin, isAuthLoading, router]);
 
@@ -34,7 +34,7 @@ export default function AdminLoginPage() {
       const res = await loginAdmin(username, password, rememberMe);
       setIsLoading(false);
       if (res.success) {
-        router.push('/admin');
+        router.push('/admin/dashboard');
       } else {
         setError(res.message);
       }
@@ -92,10 +92,10 @@ export default function AdminLoginPage() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Admin Username */}
+              {/* Admin Email or Username */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-charcoal-700 mb-1.5">
-                  Admin Username
+                  Admin Email or Username
                 </label>
                 <div className="relative flex items-center">
                   <User size={17} className="absolute left-3.5 text-charcoal-400 pointer-events-none" />
@@ -104,7 +104,7 @@ export default function AdminLoginPage() {
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="e.g. admin"
+                    placeholder="e.g. admin@college.edu or admin"
                     className="w-full bg-[#FAF7F7] text-charcoal-900 text-sm font-medium pl-10 pr-4 py-3 rounded-2xl border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20 focus:border-burgundy-700 transition-all"
                   />
                 </div>

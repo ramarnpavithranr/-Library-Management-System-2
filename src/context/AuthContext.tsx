@@ -9,17 +9,16 @@ interface AuthContextType {
   user: UserSession | null;
   isAdmin: boolean;
   isStudent: boolean;
-  loginAdmin: (username: string, pass: string, remember?: boolean) => Promise<{ success: boolean; message: string }>;
-  loginStudent: (username: string, pass: string) => Promise<{ success: boolean; message: string }>;
+  loginAdmin: (usernameOrEmail: string, pass: string, remember?: boolean) => Promise<{ success: boolean; message: string }>;
+  loginStudent: (usernameOrRoll: string, pass: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
-  switchDemoRole: (role: 'admin' | 'student', studentUsername?: string) => void;
   isLoading: boolean;
   isSupabaseConnected: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AUTH_STORAGE_KEY = 'ssec_lib_auth_user_v2';
+const AUTH_STORAGE_KEY = 'ssec_lib_auth_user_session';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { students } = useLibrary();
@@ -29,70 +28,110 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const supabaseClient = getSupabaseClient();
   const hasSupabase = isSupabaseConfigured() && Boolean(supabaseClient);
 
+  const saveUser = (u: UserSession | null) => {
+    setUser(u);
+    if (u) {
+      try {
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(u));
+      } catch (_) {}
+    } else {
+      try {
+        localStorage.removeItem(AUTH_STORAGE_KEY);
+      } catch (_) {}
+    }
+  };
+
+  // Helper to construct user session from Supabase Auth user
+  const resolveSessionUser = async (sUser: any): Promise<UserSession> => {
+    const meta = sUser.user_metadata || {};
+
+    // 1. Check if user exists in public."Students" table
+    let studentRecord: any = null;
+    if (supabaseClient) {
+      try {
+        const { data } = await supabaseClient
+          .from('Students')
+          .select('*')
+          .or(`auth_id.eq.${sUser.id},email.ilike.${sUser.email}`)
+          .limit(1);
+
+        if (Array.isArray(data) && data.length > 0) {
+          studentRecord = data[0];
+        }
+      } catch (_) {}
+    }
+
+    if (!studentRecord && students.length > 0) {
+      studentRecord = students.find(
+        (s) =>
+          s.id === sUser.id ||
+          s.studentId === sUser.id ||
+          s.email?.toLowerCase() === sUser.email?.toLowerCase() ||
+          s.username === meta.username
+      );
+    }
+
+    // If record is in Students table or meta.role is student -> Student Role
+    const isStudentUser = Boolean(studentRecord) || meta.role === 'student';
+
+    if (isStudentUser) {
+      return {
+        role: 'student',
+        id: studentRecord?.id || sUser.id,
+        studentId: studentRecord?.student_id || studentRecord?.auth_id || meta.studentId || sUser.id,
+        username: studentRecord?.Username || studentRecord?.username || meta.username || sUser.email?.split('@')[0] || 'student',
+        name: studentRecord?.Name || studentRecord?.name || meta.name || 'Student Member',
+        email: sUser.email || studentRecord?.email || '',
+        department: studentRecord?.Department || studentRecord?.department || meta.department || 'General Engineering',
+        college: studentRecord?.college || meta.college || 'Sree Sakthi Engineering College',
+        rollNumber: studentRecord?.['Roll Number'] || studentRecord?.roll_number || meta.roll_number || '',
+        year: studentRecord?.year || meta.year || '1st Year',
+        section: studentRecord?.section || meta.section || 'A',
+        profileImage: studentRecord?.profileImage || meta.profileImage,
+      };
+    }
+
+    // Otherwise -> Administrator Role
+    return {
+      role: 'admin',
+      id: sUser.id,
+      username: meta.username || sUser.email?.split('@')[0] || 'admin',
+      name: meta.name || meta.full_name || 'Administrator',
+      email: sUser.email || '',
+      profileImage:
+        meta.profileImage ||
+        meta.avatar_url ||
+        'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=400&auto=format&fit=crop',
+    };
+  };
+
   // Sync session on mount and listen to Supabase auth events
   useEffect(() => {
     let isMounted = true;
 
     const initAuth = async () => {
       try {
-        // 1. If Supabase is configured, check active Supabase Auth session
         if (hasSupabase && supabaseClient) {
           const { data, error } = await supabaseClient.auth.getSession();
           if (!error && data?.session?.user) {
-            const sUser = data.session.user;
-            const meta = sUser.user_metadata || {};
-            let storedRole: 'admin' | 'student' | null = null;
-            try {
-              const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-              if (raw) storedRole = JSON.parse(raw)?.role || null;
-            } catch (_) {}
-
-            const role: 'admin' | 'student' =
-              storedRole === 'admin' ||
-              meta.role === 'admin' ||
-              sUser.email?.includes('admin') ||
-              sUser.email?.includes('librarian')
-                ? 'admin'
-                : 'student';
-
-            // Find matching student details if student
-            const matchedStudent = students.find(
-              (s) =>
-                s.id === sUser.id ||
-                s.studentId === sUser.id ||
-                s.email?.toLowerCase() === sUser.email?.toLowerCase() ||
-                s.username === meta.username ||
-                s.rollNumber === meta.roll_number
-            );
-
-            const sessionUser: UserSession = {
-              role,
-              id: matchedStudent?.id || sUser.id,
-              username: matchedStudent?.username || meta.username || sUser.email?.split('@')[0] || (role === 'admin' ? 'admin' : 'student'),
-              name: meta.name || matchedStudent?.name || (role === 'admin' ? 'Prof. Julian Vance' : 'Student Member'),
-              email: sUser.email || matchedStudent?.email || '',
-              studentId: matchedStudent?.studentId || matchedStudent?.id || meta.studentId || sUser.id,
-              department: matchedStudent?.department || meta.department,
-              rollNumber: matchedStudent?.rollNumber || meta.roll_number || meta.rollNumber,
-              profileImage: matchedStudent?.profileImage || meta.profileImage,
-              year: matchedStudent?.year || meta.year,
-            };
-
+            const sessionUser = await resolveSessionUser(data.session.user);
             if (isMounted) {
-              setUser(sessionUser);
-              localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionUser));
+              saveUser(sessionUser);
+              setIsLoading(false);
+              return;
             }
-            return;
           }
         }
 
-        // 2. Fall back to local stored session if not on Supabase
+        // Fallback to stored session if offline
         const stored = localStorage.getItem(AUTH_STORAGE_KEY);
         if (stored && isMounted) {
-          setUser(JSON.parse(stored));
+          try {
+            setUser(JSON.parse(stored));
+          } catch (_) {}
         }
       } catch (e) {
-        console.warn('Failed to initialize session:', e);
+        console.warn('Notice initializing auth session:', e);
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -100,49 +139,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initAuth();
 
-    // 3. Supabase Auth State Change Listener
+    // Listen to live Supabase Auth state changes (sign in, sign out, token refresh)
     if (hasSupabase && supabaseClient) {
       const { data: authListener } = supabaseClient.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_OUT') {
           saveUser(null);
         } else if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
-          const sUser = session.user;
-          const meta = sUser.user_metadata || {};
-          let storedRole: 'admin' | 'student' | null = null;
-          try {
-            const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-            if (raw) storedRole = JSON.parse(raw)?.role || null;
-          } catch (_) {}
-
-          const role: 'admin' | 'student' =
-            storedRole === 'admin' ||
-            meta.role === 'admin' ||
-            sUser.email?.includes('admin') ||
-            sUser.email?.includes('librarian')
-              ? 'admin'
-              : 'student';
-
-          const matchedStudent = students.find(
-            (s) =>
-              s.id === sUser.id ||
-              s.studentId === sUser.id ||
-              s.email?.toLowerCase() === sUser.email?.toLowerCase() ||
-              s.username === meta.username ||
-              s.rollNumber === meta.roll_number
-          );
-
-          const sessionUser: UserSession = {
-            role,
-            id: matchedStudent?.id || sUser.id,
-            username: matchedStudent?.username || meta.username || sUser.email?.split('@')[0] || (role === 'admin' ? 'admin' : 'student'),
-            name: meta.name || matchedStudent?.name || (role === 'admin' ? 'Prof. Julian Vance' : 'Student Member'),
-            email: sUser.email || matchedStudent?.email || '',
-            studentId: matchedStudent?.studentId || matchedStudent?.id || meta.studentId || sUser.id,
-            department: matchedStudent?.department || meta.department,
-            rollNumber: matchedStudent?.rollNumber || meta.roll_number || meta.rollNumber,
-            profileImage: matchedStudent?.profileImage || meta.profileImage,
-            year: matchedStudent?.year || meta.year,
-          };
+          const sessionUser = await resolveSessionUser(session.user);
           saveUser(sessionUser);
         }
       });
@@ -158,284 +161,216 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [hasSupabase, students]);
 
-  const saveUser = (u: UserSession | null) => {
-    setUser(u);
-    if (u) {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(u));
-    } else {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
-    }
-  };
-
-  // 1. Admin Authentication with Supabase Auth
+  // 1. REAL ADMIN AUTHENTICATION VIA SUPABASE AUTH
   const loginAdmin = async (
-    username: string,
-    pass: string,
-    remember: boolean = true
+    usernameOrEmail: string,
+    pass: string
   ): Promise<{ success: boolean; message: string }> => {
-    const cleanUser = (username || '').trim();
+    const cleanUser = (usernameOrEmail || '').trim();
     const cleanPass = (pass || '').trim();
 
     if (!cleanUser || !cleanPass) {
-      return { success: false, message: 'Please enter both administrator username and password.' };
+      return { success: false, message: 'Please enter both administrator username/email and password.' };
     }
 
     if (!hasSupabase || !supabaseClient) {
       return {
         success: false,
-        message: 'Supabase Authentication is not configured. Please check your .env.local settings.',
+        message: 'Supabase Authentication is not configured. Please check your environment settings.',
       };
     }
 
     try {
-      // Supabase signInWithPassword expects an email.
-      // 1. If admin provided an email, use it directly.
-      // 2. If admin provided a username/alias, attempt institutional format fallbacks.
-      const candidateEmails: string[] = [];
-      if (cleanUser.includes('@')) {
-        candidateEmails.push(cleanUser);
-      } else {
-        candidateEmails.push(`${cleanUser.toLowerCase()}@sreesakthi.edu.in`);
-        if (cleanUser.toLowerCase() === 'admin') {
-          candidateEmails.push('library@sreesakthi.edu.in');
-        }
-        candidateEmails.push(cleanUser);
-      }
+      let authEmail = cleanUser;
 
-      let authData: any = null;
-      let lastErrorMessage = 'Invalid Admin credentials.';
-
-      for (const candidateEmail of candidateEmails) {
-        const { data, error } = await supabaseClient.auth.signInWithPassword({
-          email: candidateEmail,
-          password: cleanPass,
-        });
-
-        if (!error && data?.user) {
-          authData = data;
-          break;
-        } else if (error) {
-          lastErrorMessage = error.message;
+      // If username provided instead of email, resolve via backend lookup API
+      if (!cleanUser.includes('@')) {
+        try {
+          const lookupRes = await fetch('/api/auth/lookup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: cleanUser, portal: 'admin' }),
+          });
+          const lookupData = await lookupRes.json();
+          if (lookupData?.email) {
+            authEmail = lookupData.email;
+          }
+        } catch (_) {
+          authEmail = `${cleanUser.toLowerCase()}@sreesakthi.edu.in`;
         }
       }
 
-      if (authData?.user) {
-        const sUser = authData.user;
-        const meta = sUser.user_metadata || {};
-        const adminSession: UserSession = {
-          role: 'admin',
-          id: sUser.id,
-          username: meta.username || sUser.email?.split('@')[0] || cleanUser,
-          name: meta.name || meta.full_name || 'Administrator',
-          email: sUser.email || (cleanUser.includes('@') ? cleanUser : `${cleanUser}@sreesakthi.edu.in`),
-          profileImage:
-            meta.profileImage ||
-            meta.avatar_url ||
-            'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=400&auto=format&fit=crop',
+      // Real Supabase Authentication: signInWithPassword
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: authEmail,
+        password: cleanPass,
+      });
+
+      if (error) {
+        return {
+          success: false,
+          message: error.message || 'Invalid administrator credentials. Please check your email and password.',
         };
-        saveUser(adminSession);
-        return { success: true, message: 'Welcome back, Administrator. Authenticated via Supabase.' };
       }
 
-      return { success: false, message: lastErrorMessage };
+      if (!data?.user) {
+        return { success: false, message: 'Authentication failed. No user record returned by Supabase.' };
+      }
+
+      // Verify role: Ensure student accounts cannot access Admin Portal
+      const sUser = data.user;
+      const meta = sUser.user_metadata || {};
+
+      let isStudentAccount = meta.role === 'student';
+      if (!isStudentAccount) {
+        const { data: stuCheck } = await supabaseClient
+          .from('Students')
+          .select('id')
+          .or(`auth_id.eq.${sUser.id},email.ilike.${sUser.email}`)
+          .limit(1);
+
+        if (Array.isArray(stuCheck) && stuCheck.length > 0) {
+          isStudentAccount = true;
+        }
+      }
+
+      if (isStudentAccount) {
+        await supabaseClient.auth.signOut();
+        return {
+          success: false,
+          message: 'Access Restricted: This account belongs to a Student. Please log in through the Student Portal.',
+        };
+      }
+
+      const adminSession: UserSession = {
+        role: 'admin',
+        id: sUser.id,
+        username: meta.username || sUser.email?.split('@')[0] || cleanUser,
+        name: meta.name || meta.full_name || 'Administrator',
+        email: sUser.email || authEmail,
+        profileImage:
+          meta.profileImage ||
+          meta.avatar_url ||
+          'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=400&auto=format&fit=crop',
+      };
+
+      saveUser(adminSession);
+      return { success: true, message: 'Welcome back, Administrator. Authenticated via Supabase.' };
     } catch (err: any) {
-      console.warn('Supabase Auth error during admin login:', err);
+      console.error('Supabase Auth error during admin login:', err);
       return { success: false, message: err?.message || 'Authentication error occurred.' };
     }
   };
 
-  // 2. Student Authentication with Supabase Authentication
+  // 2. REAL STUDENT AUTHENTICATION VIA SUPABASE AUTH
   const loginStudent = async (
-    username: string,
+    usernameOrRoll: string,
     pass: string
   ): Promise<{ success: boolean; message: string }> => {
-    const cleanUser = (username || '').trim().toLowerCase();
+    const cleanUser = (usernameOrRoll || '').trim();
     const cleanPass = (pass || '').trim();
 
     if (!cleanUser || !cleanPass) {
-      return { success: false, message: 'Please enter student username and password.' };
+      return { success: false, message: 'Please enter student username, roll number, or email and password.' };
     }
 
     if (!hasSupabase || !supabaseClient) {
       return {
         success: false,
-        message: 'Supabase Authentication is not configured. Please check your .env.local settings.',
+        message: 'Supabase Authentication is not configured. Please check your environment settings.',
       };
     }
 
-    // 1. Locate student record from local state / cache
-    let matched = students.find(
-      (s) =>
-        s.username.toLowerCase() === cleanUser ||
-        s.email.toLowerCase() === cleanUser ||
-        s.studentId.toLowerCase() === cleanUser ||
-        s.rollNumber.toLowerCase() === cleanUser
-    );
+    try {
+      let authEmail = cleanUser;
 
-    // 2. Query existing Supabase 'Students' / 'students' table directly if not in memory
-    if (!matched) {
-      try {
-        let supaData: any[] | null = null;
-        const res1 = await supabaseClient
-          .from('Students')
-          .select('*')
-          .or(`username.ilike.${cleanUser},roll_number.ilike.${cleanUser}`)
-          .limit(1);
-
-        if (!res1.error && Array.isArray(res1.data) && res1.data.length > 0) {
-          supaData = res1.data;
-        } else {
-          const res2 = await supabaseClient
-            .from('students')
-            .select('*')
-            .or(`username.ilike.${cleanUser},roll_number.ilike.${cleanUser}`)
-            .limit(1);
-          if (!res2.error && Array.isArray(res2.data)) {
-            supaData = res2.data;
+      // If username or roll number entered, resolve to auth email via backend lookup API
+      if (!cleanUser.includes('@')) {
+        try {
+          const lookupRes = await fetch('/api/auth/lookup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: cleanUser, portal: 'student' }),
+          });
+          const lookupData = await lookupRes.json();
+          if (lookupData?.email) {
+            authEmail = lookupData.email;
           }
+        } catch (_) {
+          authEmail = `${cleanUser.toLowerCase()}@sreesakthi.edu.in`;
         }
-
-        if (supaData && supaData.length > 0) {
-          const row = supaData[0];
-          matched = {
-            id: row.id,
-            studentId: row.student_id || row.id,
-            username: row.username || row.Username,
-            name: row.name || row.Name || 'Student Member',
-            rollNumber: row.roll_number || row['Roll number'] || row['Roll Number'] || row.rollNumber || '',
-            email: row.email || `${(row.username || cleanUser).toLowerCase()}@sreesakthi.edu.in`,
-            phone: row.phone || '',
-            department: row.department || row.Department || 'Computer Science & Engineering',
-            year: row.year || row.Year || '1st Year',
-            section: row.section || row.Section || 'A',
-            status: (row.status === 'inactive' ? 'inactive' : 'active') as 'active' | 'inactive',
-            joinedDate: row.created_at
-              ? new Date(row.created_at).toISOString().split('T')[0]
-              : new Date().toISOString().split('T')[0],
-          };
-        }
-      } catch (err) {
-        console.warn('Supabase student lookup notice:', err);
       }
-    }
 
-    // Check account status if record exists
-    if (matched && matched.status === 'inactive') {
-      return { success: false, message: 'Account is inactive. Please contact Library Administration.' };
-    }
-
-    // 3. Assemble candidate emails for Supabase Auth
-    const candidateEmails: string[] = [];
-    if (cleanUser.includes('@')) {
-      candidateEmails.push(cleanUser);
-    } else {
-      if (matched?.email) candidateEmails.push(matched.email.toLowerCase());
-      if (matched?.username) candidateEmails.push(`${matched.username.toLowerCase()}@sreesakthi.edu.in`);
-      if (matched?.rollNumber) candidateEmails.push(`${matched.rollNumber.toLowerCase()}@sreesakthi.edu.in`);
-      candidateEmails.push(`${cleanUser}@sreesakthi.edu.in`);
-      candidateEmails.push(cleanUser);
-    }
-
-    const uniqueEmails = Array.from(new Set(candidateEmails));
-    let authData: any = null;
-    let authError: any = null;
-
-    // 4. Authenticate student securely using Supabase Auth signInWithPassword
-    for (const emailToTry of uniqueEmails) {
+      // Real Supabase Authentication: signInWithPassword
       const { data, error } = await supabaseClient.auth.signInWithPassword({
-        email: emailToTry,
+        email: authEmail,
         password: cleanPass,
       });
 
-      if (!error && data?.user) {
-        authData = data;
-        authError = null;
-        break;
-      } else if (error) {
-        authError = error;
-        // If Supabase returns 'Email not confirmed', the password is verified as valid by Supabase
-        if (error.message?.toLowerCase().includes('email not confirmed')) {
-          authData = {
-            user: {
-              id: matched?.id || `stu-${cleanUser}`,
-              email: emailToTry,
-              user_metadata: {
-                username: matched?.username || cleanUser,
-                name: matched?.name || 'Student Member',
-                roll_number: matched?.rollNumber || cleanUser.toUpperCase(),
-                department: matched?.department || 'Computer Science & Engineering',
-                college: matched?.college || 'Sree Sakthi Engineering College',
-                year: matched?.year || '1st Year',
-                section: matched?.section || 'A',
-                role: 'student',
-              },
-            },
-          };
-          authError = null;
-          break;
-        }
+      if (error) {
+        return {
+          success: false,
+          message: error.message || 'Invalid student credentials. Please check your username/roll number and password.',
+        };
       }
-    }
 
-    if (authData?.user) {
-      const sUser = authData.user;
+      if (!data?.user) {
+        return { success: false, message: 'Authentication failed. No user record returned by Supabase.' };
+      }
+
+      // Verify role: Ensure administrators cannot authenticate through Student Portal
+      const sUser = data.user;
       const meta = sUser.user_metadata || {};
 
-      // 5. Link the Supabase Auth user to the corresponding record in the students table
-      const linkedStudent =
-        matched ||
-        students.find(
-          (s) =>
-            s.id === sUser.id ||
-            s.studentId === sUser.id ||
-            s.username.toLowerCase() === (meta.username || cleanUser).toLowerCase() ||
-            s.rollNumber.toLowerCase() === (meta.roll_number || cleanUser).toLowerCase() ||
-            s.email.toLowerCase() === (sUser.email || '').toLowerCase()
-        );
+      if (meta.role === 'admin') {
+        await supabaseClient.auth.signOut();
+        return {
+          success: false,
+          message: 'Access Restricted: This account belongs to an Administrator. Please log in through the Admin Portal.',
+        };
+      }
+
+      // Fetch student profile from public."Students" table
+      let studentRecord: any = null;
+      try {
+        const { data: dbRows } = await supabaseClient
+          .from('Students')
+          .select('*')
+          .or(`auth_id.eq.${sUser.id},email.ilike.${sUser.email}`)
+          .limit(1);
+
+        if (Array.isArray(dbRows) && dbRows.length > 0) {
+          studentRecord = dbRows[0];
+        }
+      } catch (_) {}
+
+      // Check account status if record exists
+      if (studentRecord && studentRecord.status === 'inactive') {
+        await supabaseClient.auth.signOut();
+        return { success: false, message: 'Student account is inactive. Please contact Library Administration.' };
+      }
 
       const studentSession: UserSession = {
         role: 'student',
-        id: linkedStudent?.id || sUser.id,
-        studentId: linkedStudent?.studentId || linkedStudent?.id || sUser.id,
-        username: linkedStudent?.username || meta.username || cleanUser,
-        name: linkedStudent?.name || meta.name || 'Student Member',
-        email: sUser.email || linkedStudent?.email || `${cleanUser}@sreesakthi.edu.in`,
-        department: linkedStudent?.department || meta.department || 'Computer Science & Engineering',
-        college: linkedStudent?.college || meta.college || 'Sree Sakthi Engineering College',
-        rollNumber: linkedStudent?.rollNumber || meta.roll_number || meta.rollNumber || cleanUser.toUpperCase(),
-        year: linkedStudent?.year || meta.year || '1st Year',
-        section: linkedStudent?.section || meta.section || 'A',
-        profileImage: linkedStudent?.profileImage || meta.profileImage,
+        id: studentRecord?.id || sUser.id,
+        studentId: studentRecord?.student_id || studentRecord?.auth_id || meta.studentId || sUser.id,
+        username: studentRecord?.Username || studentRecord?.username || meta.username || cleanUser,
+        name: studentRecord?.Name || studentRecord?.name || meta.name || 'Student Member',
+        email: sUser.email || studentRecord?.email || authEmail,
+        department: studentRecord?.Department || studentRecord?.department || meta.department || 'General Engineering',
+        college: studentRecord?.college || meta.college || 'Sree Sakthi Engineering College',
+        rollNumber: studentRecord?.['Roll Number'] || studentRecord?.roll_number || meta.roll_number || cleanUser.toUpperCase(),
+        year: studentRecord?.year || meta.year || '1st Year',
+        section: studentRecord?.section || meta.section || 'A',
+        profileImage: studentRecord?.profileImage || meta.profileImage,
       };
 
       saveUser(studentSession);
       return { success: true, message: `Welcome back, ${studentSession.name}!` };
+    } catch (err: any) {
+      console.error('Supabase Auth error during student login:', err);
+      return { success: false, message: err?.message || 'Authentication error occurred.' };
     }
-
-    // Specific user-facing error messages
-    if (!matched) {
-      return {
-        success: false,
-        message: 'Username not found. Please verify your student username or contact Library Administration.',
-      };
-    }
-
-    if (
-      authError?.message?.toLowerCase().includes('invalid login credentials') ||
-      authError?.message?.toLowerCase().includes('invalid grant')
-    ) {
-      return {
-        success: false,
-        message: 'Incorrect password. Please verify your password and try again.',
-      };
-    }
-
-    return {
-      success: false,
-      message:
-        authError?.message ||
-        'Invalid student credentials. Please verify your username and password, or contact Library Administration.',
-    };
   };
 
   const logout = async () => {
@@ -443,39 +378,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await supabaseClient.auth.signOut();
       } catch (err) {
-        console.warn('Supabase signOut error:', err);
+        console.warn('Supabase signOut notice:', err);
       }
     }
     saveUser(null);
-  };
-
-  const switchDemoRole = (role: 'admin' | 'student', studentUsername: string = 'brett.adams') => {
-    if (role === 'admin') {
-      const adminSession: UserSession = {
-        role: 'admin',
-        id: 'adm-01',
-        username: 'admin',
-        name: 'Prof. Julian Vance',
-        email: 'librarian@sreesakthi.edu.in',
-        profileImage:
-          'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=400&auto=format&fit=crop',
-      };
-      saveUser(adminSession);
-    } else {
-      const student = students.find((s) => s.username === studentUsername) || students[0];
-      const studentSession: UserSession = {
-        role: 'student',
-        id: student.id,
-        studentId: student.studentId,
-        username: student.username,
-        name: student.name,
-        email: student.email,
-        department: student.department,
-        rollNumber: student.rollNumber,
-        profileImage: student.profileImage,
-      };
-      saveUser(studentSession);
-    }
   };
 
   return (
@@ -487,7 +393,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginAdmin,
         loginStudent,
         logout,
-        switchDemoRole,
         isLoading,
         isSupabaseConnected: hasSupabase,
       }}

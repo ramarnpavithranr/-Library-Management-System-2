@@ -15,9 +15,11 @@ export const ENV = {
   DEFAULT_LOAN_DAYS: parseInt(process.env.NEXT_PUBLIC_DEFAULT_LOAN_DAYS || '14', 10),
   FINE_PER_DAY: parseFloat(process.env.NEXT_PUBLIC_FINE_PER_DAY || '5'),
   MAX_BOOKS_PER_STUDENT: parseInt(process.env.NEXT_PUBLIC_MAX_BOOKS_PER_STUDENT || '3', 10),
-  SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+  SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://yvogbzoolyosvilgtyxi.supabase.co',
+  SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_I2tfBLTvezL4ckvlIjDgoQ_IL3blLtj',
+  PORTAL_TYPE: (process.env.NEXT_PUBLIC_PORTAL_TYPE || 'auto').toLowerCase() as 'admin' | 'student' | 'auto',
   IS_SUPABASE_CONFIGURED: Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://yvogbzoolyosvilgtyxi.supabase.co') &&
+    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_I2tfBLTvezL4ckvlIjDgoQ_IL3blLtj')
   ),
 } as const;

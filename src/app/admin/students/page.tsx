@@ -130,9 +130,10 @@ export default function AdminStudentsPage() {
     }
     const res = await addStudent(formData);
     if (res && res.success === false) {
-      alert(res.message || 'Failed to create student account.');
+      alert(`Database Error: ${res.message || 'Failed to create student account.'}`);
       return;
     }
+    alert(res?.message || 'Student account created and stored in Supabase successfully!');
     // Switch filter to 'All' so newly provisioned student is immediately in view
     setSelectedDept('All');
     setSearchQuery('');
