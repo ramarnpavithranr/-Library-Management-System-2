@@ -25,10 +25,11 @@ import { useLibrary } from '@/context/LibraryContext';
 import { AdminTopBar } from '@/components/admin/AdminTopBar';
 import { StatCard } from '@/components/common/StatCard';
 import { Badge } from '@/components/common/Badge';
+import { CollegeLogo } from '@/components/common/CollegeLogo';
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const { stats, borrowRecords, books, categories, preBookings, memberships } = useLibrary();
+  const { stats, borrowRecords, books, categories, preBookings, memberships, settings } = useLibrary();
 
   const overdueBorrows = borrowRecords.filter(r => r.status === 'overdue');
   const activeBorrows = borrowRecords.filter(r => r.status === 'borrowed');
@@ -43,7 +44,7 @@ export default function AdminDashboardPage() {
       />
 
       <main className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto w-full">
-        {/* Welcome Banner Card (Proton Vault Dark Card style) */}
+        {/* Welcome Banner Card / College Overview */}
         <div className="relative rounded-3xl p-6 sm:p-7 bg-gradient-to-r from-burgundy-950 via-burgundy-900 to-burgundy-800 text-white shadow-2xl border border-burgundy-700/50 overflow-hidden">
           {/* Background ambient glow circles */}
           <div className="absolute top-0 right-0 w-80 h-80 bg-rose-500/15 rounded-full blur-3xl pointer-events-none" />
@@ -51,14 +52,23 @@ export default function AdminDashboardPage() {
 
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="max-w-xl">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-semibold text-rose-200 mb-3">
-                <ShieldCheck size={14} />
-                <span>Central Library System v2.4</span>
+              {/* College Logo & Institution Name in Overview Banner */}
+              <div className="flex items-center gap-3.5 mb-3">
+                <CollegeLogo size="md" variant="glass" showText={false} />
+                <div>
+                  <h1 className="text-base sm:text-lg font-black tracking-wider text-white uppercase leading-tight">
+                    {settings?.collegeName || 'Sree Sakthi Engineering College'}
+                  </h1>
+                  <span className="text-[11px] font-semibold text-rose-200">
+                    {settings?.location ? `${settings.location} • ` : ''}Central Smart Library Overview
+                  </span>
+                </div>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-                Good morning, Librarian Vance 👋
+
+              <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
+                Good morning, Administrator 👋
               </h2>
-              <p className="text-xs sm:text-sm text-burgundy-100/90 mt-1.5 leading-relaxed">
+              <p className="text-xs sm:text-sm text-burgundy-100/90 mt-1 leading-relaxed">
                 Library operations are stable. You have <strong className="text-white underline">{pendingMembers.length} membership applications</strong> and <strong className="text-white underline">{pendingPreBooks.length} pre-book requests</strong> waiting for action.
               </p>
             </div>
@@ -83,16 +93,16 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Primary Statistics Grid */}
+        {/* Primary Statistics Grid - Essential Institution Metrics */}
         <div>
           <div className="flex items-center justify-between mb-3 px-1">
             <h3 className="text-xs font-extrabold tracking-wider uppercase text-charcoal-500">
-              Live Library Metrics
+              Institution Overview & Metrics
             </h3>
             <span className="text-xs text-charcoal-400">Real-time sync</span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
             <StatCard
               title="Total Books"
               value={stats.totalBooks}
@@ -103,7 +113,7 @@ export default function AdminDashboardPage() {
               onClick={() => router.push('/admin/books')}
             />
             <StatCard
-              title="Available"
+              title="Total Available"
               value={stats.availableBooks}
               subtitle="ready to borrow"
               icon={BookCheck}
@@ -112,7 +122,7 @@ export default function AdminDashboardPage() {
               onClick={() => router.push('/admin/books')}
             />
             <StatCard
-              title="Issued Books"
+              title="Total Borrowed"
               value={stats.borrowedBooks}
               subtitle="active with students"
               icon={TrendingUp}
@@ -120,13 +130,20 @@ export default function AdminDashboardPage() {
               onClick={() => router.push('/admin/issue')}
             />
             <StatCard
-              title="Overdue"
-              value={stats.overdueBooks}
-              subtitle="past return date"
-              icon={AlertTriangle}
-              variant="accent"
-              trend={{ value: `${stats.overdueBooks} items`, isPositive: false }}
-              onClick={() => router.push('/admin/return')}
+              title="Student Records"
+              value={stats.totalStudents}
+              subtitle="registered students"
+              icon={Users}
+              variant="cream"
+              onClick={() => router.push('/admin/students')}
+            />
+            <StatCard
+              title="Total User Records"
+              value={stats.totalStudents + 1}
+              subtitle="students & admin"
+              icon={ShieldCheck}
+              variant="white"
+              onClick={() => router.push('/admin/students')}
             />
           </div>
         </div>
@@ -135,10 +152,10 @@ export default function AdminDashboardPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="bg-white p-4 rounded-2xl border border-burgundy-100 shadow-soft">
             <span className="text-[10px] font-bold uppercase tracking-wider text-charcoal-400 block mb-1">
-              Registered Students
+              Overdue Items
             </span>
-            <span className="text-xl font-extrabold text-charcoal-900">{stats.totalStudents}</span>
-            <p className="text-[10px] text-charcoal-500 mt-1">Active college accounts</p>
+            <span className="text-xl font-extrabold text-amber-600">{stats.overdueBooks}</span>
+            <p className="text-[10px] text-charcoal-500 mt-1">Past return date</p>
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-burgundy-100 shadow-soft">

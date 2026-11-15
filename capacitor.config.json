@@ -1,0 +1,14 @@
+{
+  "appId": "in.edu.sreesakthi.smartlibrary",
+  "appName": "SSEC Smart Library",
+  "webDir": "public",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#6E1129"
+  }
+}

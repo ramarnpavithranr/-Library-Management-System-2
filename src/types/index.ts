@@ -53,8 +53,11 @@ export interface MembershipCard {
   appliedDate: string;
   approvedDate?: string;
   expiryDate?: string;
+  issuedDate?: string;
   status: 'pending' | 'approved' | 'rejected';
   photo?: string;
+  phone?: string;
+  email?: string;
   qrData?: string;
 }
 

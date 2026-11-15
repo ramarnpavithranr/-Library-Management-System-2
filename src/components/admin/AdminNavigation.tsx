@@ -182,7 +182,7 @@ export const AdminNavigation: React.FC = () => {
       </aside>
 
       {/* MOBILE BOTTOM NAVIGATION BAR (Proton Vault inspired floating capsule dock) */}
-      <nav className="lg:hidden fixed bottom-3 left-4 right-4 z-40">
+      <nav className="lg:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] left-4 right-4 z-40">
         <div className="bg-white/95 backdrop-blur-xl border border-burgundy-100/90 rounded-full shadow-2xl px-3 py-2 flex items-center justify-around">
           {mobileNavItems.map((item) => {
             const Icon = item.icon;

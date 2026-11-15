@@ -1,6 +1,8 @@
+'use client';
+
 import React from 'react';
-import Image from 'next/image';
 import { ENV } from '@/config/env';
+import { useLibrary } from '@/context/LibraryContext';
 
 interface CollegeLogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
@@ -19,6 +21,17 @@ export const CollegeLogo: React.FC<CollegeLogoProps> = ({
   animated = false,
   className = '',
 }) => {
+  let settings;
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const lib = useLibrary();
+    settings = lib?.settings;
+  } catch (_) {}
+
+  const logoSrc = settings?.collegeLogo || '/college-logo.png';
+  const collegeName = settings?.collegeName || ENV.COLLEGE_NAME || 'SREE SAKTHI ENGINEERING COLLEGE';
+  const location = settings?.location !== undefined ? settings.location : (ENV.COLLEGE_LOCATION || 'Coimbatore');
+
   const pixelSizes = {
     sm: 36,
     md: 48,
@@ -52,12 +65,12 @@ export const CollegeLogo: React.FC<CollegeLogoProps> = ({
 
         {/* Real Official College Emblem Image */}
         <div className="relative w-full h-full rounded-full overflow-hidden flex items-center justify-center bg-white border-2 border-burgundy-900/10">
-          <Image
-            src="/college-logo.png"
-            alt="Sree Sakthi Engineering College Logo"
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={logoSrc}
+            alt={collegeName}
             width={pixelSizes[size]}
             height={pixelSizes[size]}
-            priority
             className="w-full h-full object-contain rounded-full select-none"
           />
         </div>
@@ -76,7 +89,7 @@ export const CollegeLogo: React.FC<CollegeLogoProps> = ({
                 : 'text-[11px] font-bold'
             }`}
           >
-            {ENV.COLLEGE_NAME || 'SREE SAKTHI ENGINEERING COLLEGE'}
+            {collegeName}
           </span>
           <div className="flex items-center gap-1.5 justify-center sm:justify-start">
             <span
@@ -84,7 +97,7 @@ export const CollegeLogo: React.FC<CollegeLogoProps> = ({
                 size === '2xl' || size === 'xl' ? 'text-xs' : 'text-[10px]'
               }`}
             >
-              {ENV.COLLEGE_LOCATION ? `${ENV.COLLEGE_LOCATION} • ` : ''}{ENV.LIBRARY_NAME || 'Central Smart Library'}
+              {location ? `${location} • ` : ''}{ENV.LIBRARY_NAME || 'Central Smart Library'}
             </span>
           </div>
         </div>

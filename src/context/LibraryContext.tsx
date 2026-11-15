@@ -24,6 +24,17 @@ import {
 import { ENV } from '@/config/env';
 import { getSupabaseClient, createEphemeralAuthClient } from '@/lib/supabaseClient';
 
+export interface InstitutionSettings {
+  collegeName: string;
+  collegeLogo: string;
+  address: string;
+  location: string;
+  fineRate: number;
+  loanPeriod: number;
+  maxBooks: number;
+  holdDays: number;
+}
+
 interface LibraryContextType {
   books: Book[];
   categories: Category[];
@@ -33,6 +44,7 @@ interface LibraryContextType {
   preBookings: PreBookRequest[];
   fines: FineRecord[];
   notifications: LibraryNotification[];
+  settings: InstitutionSettings;
 
   // Statistics
   stats: {
@@ -50,12 +62,17 @@ interface LibraryContextType {
     pendingPreBooks: number;
   };
 
+  // Settings methods
+  updateSettings: (newSettings: Partial<InstitutionSettings>) => Promise<boolean>;
+  refreshSettings: () => Promise<void>;
+
   // Book methods
   addBook: (book: Omit<Book, 'id'>) => Promise<{ success: boolean; message: string; book?: Book }>;
   bulkAddBooks: (books: Omit<Book, 'id'>[]) => number;
   updateBook: (id: string, book: Partial<Book>) => void;
   deleteBook: (id: string) => void;
   getBook: (id: string) => Book | undefined;
+  refreshBooks: () => Promise<void>;
 
   // Category methods
   addCategory: (category: Omit<Category, 'id'>) => void;
@@ -67,6 +84,7 @@ interface LibraryContextType {
   bulkAddStudents: (students: Omit<Student, 'id' | 'joinedDate'>[]) => number;
   updateStudent: (id: string, student: Partial<Student>) => void;
   changeStudentPassword: (studentId: string, currentPass: string, newPass: string) => Promise<{ success: boolean; message: string }> | { success: boolean; message: string };
+  refreshStudents: () => Promise<void>;
 
   // Issue & Return
   issueBook: (studentId: string, bookId: string, dueDate: string, remarks?: string) => { success: boolean; message: string };
@@ -75,6 +93,7 @@ interface LibraryContextType {
   // Pre-Bookings
   requestPreBook: (studentId: string, bookId: string, notes?: string) => { success: boolean; message: string };
   updatePreBookStatus: (id: string, status: PreBookRequest['status'], pickupDeadline?: string, notes?: string) => void;
+  refreshPreBookings: () => Promise<void>;
 
   // Membership
   applyForMembership: (
@@ -108,6 +127,17 @@ interface LibraryContextType {
 
 const LibraryContext = createContext<LibraryContextType | undefined>(undefined);
 
+export const DEFAULT_SETTINGS: InstitutionSettings = {
+  collegeName: 'Sree Sakthi Engineering College',
+  collegeLogo: '/college-logo.png',
+  address: 'Bettathapuram, Karamadai, Coimbatore - 641104',
+  location: 'Coimbatore',
+  fineRate: 5,
+  loanPeriod: 14,
+  maxBooks: 3,
+  holdDays: 5,
+};
+
 const STORAGE_KEYS = {
   BOOKS: 'ssec_admin_books_v3',
   CATEGORIES: 'ssec_lib_categories_v3',
@@ -117,6 +147,7 @@ const STORAGE_KEYS = {
   PRE_BOOKINGS: 'ssec_lib_prebooks_v3',
   FINES: 'ssec_lib_fines_v3',
   NOTIFICATIONS: 'ssec_lib_notifs_v3',
+  SETTINGS: 'ssec_institution_settings_v3',
 };
 
 const BASE_CATEGORIES: Category[] = INITIAL_CATEGORIES.map(c => ({ ...c, bookCount: 0 }));
@@ -244,7 +275,61 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [preBookings, setPreBookings] = useState<PreBookRequest[]>([]);
   const [fines, setFines] = useState<FineRecord[]>([]);
   const [notifications, setNotifications] = useState<LibraryNotification[]>([]);
+  const [settings, setSettings] = useState<InstitutionSettings>(DEFAULT_SETTINGS);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Sync methods for server persistence & real-time updates
+  const refreshSettings = async () => {
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      if (data?.success && data.settings) {
+        setSettings(data.settings);
+        try {
+          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(data.settings));
+        } catch (_) {}
+      }
+    } catch (e) {
+      console.warn('Notice loading server settings:', e);
+    }
+  };
+
+  const refreshPreBookings = async () => {
+    try {
+      const res = await fetch('/api/pre-bookings');
+      const data = await res.json();
+      if (data?.success && Array.isArray(data.preBookings)) {
+        setPreBookings(data.preBookings);
+      }
+    } catch (e) {
+      console.warn('Notice loading server pre-bookings:', e);
+    }
+  };
+
+  const updateSettings = async (newSettings: Partial<InstitutionSettings>): Promise<boolean> => {
+    try {
+      const updated = { ...settings, ...newSettings };
+      setSettings(updated);
+      try {
+        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
+      } catch (_) {}
+
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+      const data = await res.json();
+      if (data?.success && data.settings) {
+        setSettings(data.settings);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Error updating institution settings:', err);
+      return false;
+    }
+  };
 
   // Load from LocalStorage and Supabase on mount
   useEffect(() => {
@@ -257,6 +342,7 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const storedPreBooks = localStorage.getItem(STORAGE_KEYS.PRE_BOOKINGS);
       const storedFines = localStorage.getItem(STORAGE_KEYS.FINES);
       const storedNotifs = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
+      const storedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
 
       if (storedBooks) setBooks(JSON.parse(storedBooks));
       if (storedStudents) setStudents(JSON.parse(storedStudents));
@@ -266,11 +352,16 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (storedPreBooks) setPreBookings(JSON.parse(storedPreBooks));
       if (storedFines) setFines(JSON.parse(storedFines));
       if (storedNotifs) setNotifications(JSON.parse(storedNotifs));
+      if (storedSettings) setSettings(JSON.parse(storedSettings));
     } catch (e) {
       console.warn('Failed to parse stored library data', e);
     } finally {
       setIsLoaded(true);
     }
+
+    // Load initial server data
+    refreshSettings();
+    refreshPreBookings();
 
     // Sync memberships from central server API across devices
     fetch('/api/membership')
@@ -281,6 +372,36 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       })
       .catch((err) => console.warn('Notice loading server memberships:', err));
+
+    // Periodic synchronization across portals (Admin <-> Student) every 4 seconds
+    const syncInterval = setInterval(() => {
+      fetch('/api/membership')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.success && Array.isArray(data.memberships)) {
+            setMemberships(data.memberships);
+          }
+        })
+        .catch(() => {});
+
+      fetch('/api/pre-bookings')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.success && Array.isArray(data.preBookings)) {
+            setPreBookings(data.preBookings);
+          }
+        })
+        .catch(() => {});
+
+      fetch('/api/settings')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.success && data.settings) {
+            setSettings(data.settings);
+          }
+        })
+        .catch(() => {});
+    }, 4000);
 
     // Connect to Supabase tables 'Books' and 'Students'
     const supabase = getSupabaseClient();
@@ -299,6 +420,8 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       });
     }
+
+    return () => clearInterval(syncInterval);
   }, []);
 
   // Dynamically update category book counts to match existing books
@@ -324,10 +447,11 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       localStorage.setItem(STORAGE_KEYS.PRE_BOOKINGS, JSON.stringify(preBookings));
       localStorage.setItem(STORAGE_KEYS.FINES, JSON.stringify(fines));
       localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifications));
+      localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
     } catch (e) {
       console.error('Failed to save to localStorage', e);
     }
-  }, [books, categories, students, memberships, borrowRecords, preBookings, fines, notifications, isLoaded]);
+  }, [books, categories, students, memberships, borrowRecords, preBookings, fines, notifications, settings, isLoaded]);
 
   // Derived statistics
   const totalBooks = books.reduce((sum, b) => sum + (b.quantity || 0), 0);
@@ -359,6 +483,42 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     pendingPreBooks,
   };
 
+  // Re-fetch Books directly from Supabase
+  const refreshBooks = async () => {
+    try {
+      const supa = getSupabaseClient();
+      if (supa) {
+        const { data, error } = await supa.from('Books').select('*').order('id', { ascending: true });
+        if (!error && Array.isArray(data)) {
+          setBooks(data.map(mapSupabaseBookToFrontend));
+          return;
+        }
+      }
+      const res = await fetch('/api/books');
+      const json = await res.json().catch(() => null);
+      if (json?.success && Array.isArray(json.books)) {
+        setBooks(json.books);
+      }
+    } catch (err) {
+      console.warn('Notice refreshing books from Supabase:', err);
+    }
+  };
+
+  // Re-fetch Students directly from Supabase
+  const refreshStudents = async () => {
+    try {
+      const supa = getSupabaseClient();
+      if (supa) {
+        const { data, error } = await supa.from('Students').select('*').order('id', { ascending: true });
+        if (!error && Array.isArray(data)) {
+          setStudents(data.map(mapSupabaseStudentToFrontend));
+        }
+      }
+    } catch (err) {
+      console.warn('Notice refreshing students from Supabase:', err);
+    }
+  };
+
   // Book methods
   const addBook = async (
     bookData: Omit<Book, 'id'>
@@ -382,16 +542,13 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         };
       }
 
-      const createdBook: Book = data.book || {
-        ...bookData,
-        id: `bk-${Date.now()}`,
-      };
+      // Re-fetch Books table data from Supabase to refresh the UI
+      await refreshBooks();
 
-      setBooks((prev) => [createdBook, ...prev]);
       return {
         success: true,
-        message: data.message || `Book "${bookData.title}" stored in Supabase Books table successfully!`,
-        book: createdBook,
+        message: data.message || 'Book Added Successfully',
+        book: data.book,
       };
     } catch (err: any) {
       console.error('Network error during addBook:', err);
@@ -562,12 +719,18 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const data = await res.json().catch(() => null);
 
       if (res.ok && data?.success) {
-        if (data.user?.id) assignedId = data.user.id;
+        // Re-fetch Students table data from Supabase so the UI reflects the real database state
+        await refreshStudents();
+
+        return {
+          success: true,
+          message: data.message || 'Student Created Successfully',
+          student: data.user,
+        };
       } else {
-        // Return database or auth error directly to the Admin without creating inconsistent records
         return {
           success: false,
-          message: data?.message || 'Failed to create student account and insert into database.',
+          message: data?.message || data?.error || 'Database insert failed for Students table.',
         };
       }
     } catch (err: any) {
@@ -577,42 +740,6 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         message: err?.message || 'Network error while attempting to create student account.',
       };
     }
-
-    // 3. Assemble complete newStudent record
-    const newStudent: Student = {
-      ...studentData,
-      id: assignedId,
-      studentId: studentData.studentId || assignedId,
-      email: studentEmail,
-      username: studentUsername,
-      rollNumber: studentRoll,
-      college: studentData.college || 'Sree Sakthi Engineering College',
-      password: '', // Plaintext password is NEVER stored in database or memory
-      status: studentData.status || 'active',
-      joinedDate: new Date().toISOString().split('T')[0],
-      profileImage:
-        studentData.profileImage ||
-        `https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=400&auto=format&fit=crop`,
-    };
-
-    // 4. Update React state immediately so student appears in Student Records list instantly
-    setStudents((prev) => [newStudent, ...prev.filter((s) => s.username?.toLowerCase() !== studentUsername)]);
-
-    // 5. Synchronously persist to LocalStorage
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-      const existing: Student[] = stored ? JSON.parse(stored) : [];
-      const updated = [newStudent, ...existing.filter((s) => s.username?.toLowerCase() !== studentUsername)];
-      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
-    } catch (storageErr) {
-      console.warn('LocalStorage save error:', storageErr);
-    }
-
-    return {
-      success: true,
-      message: provisionMessage,
-      student: newStudent,
-    };
   };
 
   const bulkAddStudents = (newStudentsData: Omit<Student, 'id' | 'joinedDate'>[]): number => {
@@ -922,6 +1049,13 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setPreBookings(prev => [newRequest, ...prev]);
 
+    // Persist to central server store /api/pre-bookings so it appears immediately in Admin Portal
+    fetch('/api/pre-bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newRequest),
+    }).catch(err => console.warn('Server notice saving pre-booking:', err));
+
     // Admin notification
     setNotifications(prev => [
       {
@@ -957,6 +1091,13 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
           : p
       )
     );
+
+    // Persist status change to central server store /api/pre-bookings
+    fetch('/api/pre-bookings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status, pickupDeadline, notes }),
+    }).catch(err => console.warn('Server notice updating pre-booking:', err));
 
     const req = preBookings.find(p => p.id === id);
     if (req) {
@@ -1163,10 +1304,13 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           id: membershipId,
+          membershipId: generatedId,
           status: 'approved',
           expiryDate: expiryDateStr,
         }),
-      }).catch(err => console.warn('Server sync notice for approve:', err));
+      })
+        .then(() => refreshMemberships())
+        .catch(err => console.warn('Server sync notice for approve:', err));
     });
 
     const mem = memberships.find(m => m.id === membershipId || m.membershipId === membershipId);
@@ -1264,12 +1408,17 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         preBookings,
         fines,
         notifications,
+        settings,
         stats,
+        updateSettings,
+        refreshSettings,
+        refreshPreBookings,
         addBook,
         bulkAddBooks,
         updateBook,
         deleteBook,
         getBook,
+        refreshBooks,
         addCategory,
         updateCategory,
         deleteCategory,
@@ -1277,6 +1426,7 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         bulkAddStudents,
         updateStudent,
         changeStudentPassword,
+        refreshStudents,
         issueBook,
         returnBook,
         requestPreBook,

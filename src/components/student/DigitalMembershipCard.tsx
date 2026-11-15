@@ -7,6 +7,7 @@ import { Badge } from '@/components/common/Badge';
 import { QrCode, ShieldCheck, Download, Sparkles, AlertCircle, RefreshCw, CreditCard } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ENV } from '@/config/env';
+import { useLibrary } from '@/context/LibraryContext';
 
 interface DigitalMembershipCardProps {
   card?: MembershipCard;
@@ -20,6 +21,12 @@ export const DigitalMembershipCard: React.FC<DigitalMembershipCardProps> = ({
   isApplying = false,
 }) => {
   const [isFlipped, setIsFlipped] = useState(false);
+  let settings;
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const lib = useLibrary();
+    settings = lib?.settings;
+  } catch (_) {}
 
   const triggerConfetti = () => {
     confetti({
@@ -143,7 +150,7 @@ export const DigitalMembershipCard: React.FC<DigitalMembershipCardProps> = ({
             <CollegeLogo size="sm" variant="glass" showText={false} />
             <div className="flex flex-col">
               <span className="text-[10px] uppercase font-bold tracking-widest text-rose-200 leading-none">
-                {ENV.COLLEGE_NAME}
+                {settings?.collegeName || ENV.COLLEGE_NAME}
               </span>
               <span className="text-xs font-extrabold tracking-tight text-white leading-tight">
                 {ENV.LIBRARY_NAME} Pass

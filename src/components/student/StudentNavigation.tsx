@@ -249,7 +249,7 @@ export const StudentNavigation: React.FC = () => {
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}
       {/* Converted: [Home] • [Small Center Action Icon] • [Profile] */}
-      <nav className="lg:hidden fixed bottom-3 left-6 right-6 z-40 max-w-sm mx-auto">
+      <nav className="lg:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] left-6 right-6 z-40 max-w-sm mx-auto">
         <div className="bg-white/95 backdrop-blur-xl border border-burgundy-100 shadow-2xl rounded-full px-6 py-2 flex items-center justify-between">
           
           {/* 1. Left: Home */}

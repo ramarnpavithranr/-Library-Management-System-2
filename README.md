@@ -140,6 +140,44 @@ npm run start
 
 ---
 
+## 📱 Mobile Application & Android Deployment
+
+The application has been converted into a native-ready mobile application while preserving 100% of the UI design, user flows, database structures, Supabase authentication, and business logic.
+
+### 1. Mobile-First Capabilities
+- **Web App Manifest (`public/manifest.json`)**: Configured with `display: "standalone"`, `orientation: "portrait-primary"`, and institutional branding for edge-to-edge native appearance.
+- **Android Safe Area Handling**: Responsive floating capsule bottom navigation docks with `env(safe-area-inset-bottom)` support for notched and gesture-bar Android devices.
+- **Mobile Touch Optimization**: `touch-action: manipulation` eliminates the 300ms touch delay for instant responsiveness.
+- **Micro-Interactions & 3D Flip Card**: Mobile touch-interactive digital membership card with verified QR barcode.
+
+### 2. Running on Android Mobile Devices Over Local Wi-Fi
+The development server is pre-configured to bind to all interfaces (`-H 0.0.0.0`):
+1. Connect your Android phone to the same Wi-Fi network as your computer.
+2. Find your computer's local IP address (e.g., `192.168.1.5`):
+   ```powershell
+   ipconfig
+   ```
+3. Open Chrome on your Android mobile device and navigate to:
+   ```
+   http://<YOUR-IP>:3000
+   ```
+4. Tap the browser menu (⋮) and select **"Add to Home screen"** or **"Install App"**. The system installs as a standalone Android app with the official SSEC logo and launch splash screen.
+
+### 3. Native Android Build via Capacitor
+The repository includes `capacitor.config.json` pre-configured for Android compilation:
+```bash
+# 1. Install Capacitor native tooling
+npm install @capacitor/core @capacitor/cli @capacitor/android
+
+# 2. Add native Android project
+npx cap add android
+
+# 3. Open in Android Studio to build APK / AAB
+npx cap open android
+```
+
+---
+
 ## 📦 GitHub Push Instructions
 
 To push the repository to GitHub:

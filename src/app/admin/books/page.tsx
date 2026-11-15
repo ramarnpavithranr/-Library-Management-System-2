@@ -120,11 +120,11 @@ export default function AdminBooksPage() {
       return;
     }
     const res = await addBook(formData);
-    if (!res.success) {
-      alert(`Database Error: ${res.message}`);
+    if (!res || !res.success) {
+      alert(`Database Error: ${res?.message || 'Failed to add book.'}`);
       return;
     }
-    alert(res.message);
+    alert(res.message || 'Book Added Successfully');
     setIsAddModalOpen(false);
   };
 

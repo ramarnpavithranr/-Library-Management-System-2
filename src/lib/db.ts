@@ -1,4 +1,9 @@
 import { Pool, QueryResult, QueryResultRow } from 'pg';
+import dns from 'dns';
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (_) {}
 
 let pool: Pool | null = null;
 

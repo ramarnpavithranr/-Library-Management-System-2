@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BookmarkCheck,
@@ -19,11 +19,29 @@ import { Badge } from '@/components/common/Badge';
 
 export default function StudentPreBookingsPage() {
   const router = useRouter();
-  const { preBookings, updatePreBookStatus } = useLibrary();
+  const { preBookings, updatePreBookStatus, refreshPreBookings } = useLibrary();
   const { user } = useAuth();
   const currentStudentId = user?.studentId || user?.id || '';
 
-  const myReservations = preBookings.filter((p) => p.studentId === currentStudentId);
+  useEffect(() => {
+    refreshPreBookings();
+    const interval = setInterval(() => {
+      refreshPreBookings();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const userRollNorm = (user?.rollNumber || '').replace(/\D/g, '');
+  const myReservations = preBookings.filter(
+    (p) =>
+      p.studentId === currentStudentId ||
+      p.studentId === user?.id ||
+      p.studentId === user?.username ||
+      (user?.rollNumber && p.rollNumber && p.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
+      (userRollNorm && p.rollNumber && p.rollNumber.replace(/\D/g, '') === userRollNorm) ||
+      (user?.username && p.studentId && p.studentId.toLowerCase() === user.username.toLowerCase()) ||
+      (user?.name && p.studentName && p.studentName.toLowerCase() === user.name.toLowerCase())
+  );
 
   const handleCancel = (id: string, title: string) => {
     if (confirm(`Cancel reservation for "${title}"?`)) {

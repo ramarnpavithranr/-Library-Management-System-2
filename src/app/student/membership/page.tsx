@@ -31,18 +31,24 @@ export default function StudentMembershipPage() {
   }, []);
 
   const currentStudentId = user?.studentId || user?.id || user?.username || '';
+  const userRollNorm = (user?.rollNumber || '').replace(/\D/g, '');
   const myCard = memberships.find(
     (m) =>
       m.studentId === currentStudentId ||
       m.studentId === user?.id ||
       m.studentId === user?.username ||
-      (user?.rollNumber && m.rollNumber && m.rollNumber.toUpperCase() === user.rollNumber.toUpperCase()) ||
-      (user?.username && m.studentId && m.studentId.toLowerCase() === user.username.toLowerCase())
+      (user?.rollNumber && m.rollNumber && m.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
+      (userRollNorm && m.rollNumber && m.rollNumber.replace(/\D/g, '') === userRollNorm) ||
+      (user?.username && m.studentId && m.studentId.toLowerCase() === user.username.toLowerCase()) ||
+      (user?.email && m.email && m.email.toLowerCase() === user.email.toLowerCase()) ||
+      (user?.name && m.studentName && m.studentName.trim().toLowerCase() === user.name.trim().toLowerCase())
   );
   const currentStudent = students.find(
     (s) =>
       s.studentId === currentStudentId ||
       s.id === user?.id ||
+      (user?.rollNumber && s.rollNumber && s.rollNumber.toUpperCase() === user.rollNumber.toUpperCase()) ||
+      (userRollNorm && s.rollNumber && s.rollNumber.replace(/\D/g, '') === userRollNorm) ||
       (user?.username && s.username && s.username.toLowerCase() === user.username.toLowerCase())
   );
 

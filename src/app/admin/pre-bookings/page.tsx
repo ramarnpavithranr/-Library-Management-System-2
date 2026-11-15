@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BookmarkCheck,
   CheckCircle,
@@ -20,7 +20,15 @@ import { Modal } from '@/components/common/Modal';
 import { PreBookRequest } from '@/types';
 
 export default function AdminPreBookingsPage() {
-  const { preBookings, updatePreBookStatus } = useLibrary();
+  const { preBookings, updatePreBookStatus, refreshPreBookings } = useLibrary();
+
+  useEffect(() => {
+    refreshPreBookings();
+    const interval = setInterval(() => {
+      refreshPreBookings();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'completed' | 'rejected'>('all');
