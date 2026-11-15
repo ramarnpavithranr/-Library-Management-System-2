@@ -12,13 +12,13 @@ export function getPortalType(): PortalType {
   if (envType === 'admin') return 'admin';
   if (envType === 'student') return 'student';
 
-  // 2. Client-side Hostname / Subdomain Detection (e.g. admin.domain.com, library-admin.vercel.app)
+  // 2. Strict Subdomain Detection (e.g. admin.sreesakthi.edu.in, student.sreesakthi.edu.in)
   if (typeof window !== 'undefined') {
     const host = (window.location.hostname || '').toLowerCase();
-    if (host.startsWith('admin.') || host.includes('admin-') || host.includes('-admin')) {
+    if (host.startsWith('admin.')) {
       return 'admin';
     }
-    if (host.startsWith('student.') || host.includes('student-') || host.includes('-student')) {
+    if (host.startsWith('student.')) {
       return 'student';
     }
   }
@@ -28,31 +28,15 @@ export function getPortalType(): PortalType {
 }
 
 /**
- * Returns true only if the environment or hostname strictly locks this deployment to Admin
+ * Returns true only if the environment strictly locks this deployment to Admin
  */
 export function isStrictAdminPortal(): boolean {
-  const envType = (process.env.NEXT_PUBLIC_PORTAL_TYPE || '').toLowerCase().trim();
-  if (envType === 'admin') return true;
-
-  if (typeof window !== 'undefined') {
-    const host = (window.location.hostname || '').toLowerCase();
-    return host.startsWith('admin.') || host.includes('admin-') || host.includes('-admin');
-  }
-
-  return false;
+  return (process.env.NEXT_PUBLIC_PORTAL_TYPE || '').toLowerCase().trim() === 'admin';
 }
 
 /**
- * Returns true only if the environment or hostname strictly locks this deployment to Student
+ * Returns true only if the environment strictly locks this deployment to Student
  */
 export function isStrictStudentPortal(): boolean {
-  const envType = (process.env.NEXT_PUBLIC_PORTAL_TYPE || '').toLowerCase().trim();
-  if (envType === 'student') return true;
-
-  if (typeof window !== 'undefined') {
-    const host = (window.location.hostname || '').toLowerCase();
-    return host.startsWith('student.') || host.includes('student-') || host.includes('-student');
-  }
-
-  return false;
+  return (process.env.NEXT_PUBLIC_PORTAL_TYPE || '').toLowerCase().trim() === 'student';
 }

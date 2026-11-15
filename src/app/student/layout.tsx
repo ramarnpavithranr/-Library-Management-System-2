@@ -4,28 +4,24 @@ import React, { useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { usePathname, useRouter } from 'next/navigation';
 import { StudentNavigation } from '@/components/student/StudentNavigation';
-import { isStrictAdminPortal } from '@/lib/portal';
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
-  useEffect(() => {
-    // 1. Cross-portal prevention: If this deployment is strictly the Admin Portal, redirect away
-    if (isStrictAdminPortal()) {
-      router.replace('/admin');
-      return;
-    }
+  const normalizedPath = (pathname || '').replace(/\/+$/, '') || '/';
+  const isAuthPage = normalizedPath === '/student' || normalizedPath === '/student/login';
 
-    // 2. If not authenticated and attempting to view a protected student page, redirect to /student
-    if (!isLoading && (!user || user.role !== 'student') && pathname !== '/student/login' && pathname !== '/student') {
+  useEffect(() => {
+    // If not authenticated and attempting to view a protected student page, redirect to /student
+    if (!isLoading && (!user || user.role !== 'student') && !isAuthPage) {
       router.push('/student');
     }
-  }, [user, isLoading, pathname, router]);
+  }, [user, isLoading, isAuthPage, router]);
 
   // If on student or student/login, do not wrap in navigation shell
-  if (pathname === '/student' || pathname === '/student/login') {
+  if (isAuthPage) {
     return <>{children}</>;
   }
 
