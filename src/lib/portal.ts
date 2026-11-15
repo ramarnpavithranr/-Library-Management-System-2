@@ -4,10 +4,10 @@
  * as the Admin Portal or the Student Portal.
  */
 
-export type PortalType = 'admin' | 'student';
+export type PortalType = 'admin' | 'student' | 'unified';
 
 export function getPortalType(): PortalType {
-  // 1. Explicit Environment Variable (configured in Vercel project settings)
+  // 1. Explicit Environment Variable (configured in Vercel/Netlify project settings)
   const envType = (process.env.NEXT_PUBLIC_PORTAL_TYPE || '').toLowerCase().trim();
   if (envType === 'admin') return 'admin';
   if (envType === 'student') return 'student';
@@ -23,8 +23,8 @@ export function getPortalType(): PortalType {
     }
   }
 
-  // 3. Default fallback
-  return 'student';
+  // 3. Default: Unified Dual-Portal Deployment with Landing Gateway
+  return 'unified';
 }
 
 /**

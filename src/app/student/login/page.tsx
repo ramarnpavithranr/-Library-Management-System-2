@@ -152,6 +152,24 @@ export default function StudentLoginPage() {
             </form>
           </div>
 
+          {/* Quick Cross-Portal Switcher */}
+          <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-3 text-xs text-charcoal-500">
+            <a
+              href="/admin"
+              className="hover:text-burgundy-900 transition-colors inline-flex items-center gap-1 font-semibold"
+            >
+              <span>Faculty or Librarian?</span>
+              <span className="text-burgundy-800 font-bold underline">Access Admin Portal &rarr;</span>
+            </a>
+            <span className="hidden sm:inline text-charcoal-300">•</span>
+            <a
+              href="/"
+              className="text-charcoal-400 hover:text-charcoal-700 transition-colors font-medium"
+            >
+              Portal Gateway
+            </a>
+          </div>
+
 
         </div>
       </div>
