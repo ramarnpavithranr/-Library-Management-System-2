@@ -14,56 +14,28 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Detect configured portal mode from environment variable or incoming hostname
-  const envPortal = (process.env.NEXT_PUBLIC_PORTAL_TYPE || process.env.PORTAL_TYPE || '').toLowerCase().trim();
-  let portal: 'admin' | 'student' | null = null;
-
-  if (envPortal === 'admin') {
-    portal = 'admin';
-  } else if (envPortal === 'student') {
-    portal = 'student';
-  } else if (host.startsWith('admin.') || host.includes('admin-') || host.includes('-admin')) {
-    portal = 'admin';
-  } else if (host.startsWith('student.') || host.includes('student-') || host.includes('-student')) {
-    portal = 'student';
-  }
-
-  // 3. ADMIN PORTAL DEPLOYMENT ROUTING RULES
-  if (portal === 'admin') {
-    // Direct entry: Root '/' opens Admin Portal directly (no selection screen)
-    if (pathname === '/') {
+  // 2. Strict Subdomain Routing ONLY on root '/'
+  // If a dedicated subdomain is configured (e.g., admin.domain.com or student.domain.com),
+  // browsing to root '/' rewrites to the respective portal.
+  if (pathname === '/') {
+    if (host.startsWith('admin.')) {
       return NextResponse.rewrite(new URL('/admin', req.url));
     }
-    // Cross-portal prevention: Students/Visitors cannot access student routes on Admin portal
-    if (pathname.startsWith('/student')) {
-      return NextResponse.redirect(new URL('/admin', req.url));
-    }
-    return NextResponse.next();
-  }
-
-  // 4. STUDENT PORTAL DEPLOYMENT ROUTING RULES
-  if (portal === 'student') {
-    // Direct entry: Root '/' opens Student Portal directly (no selection screen)
-    if (pathname === '/') {
+    if (host.startsWith('student.')) {
       return NextResponse.rewrite(new URL('/student', req.url));
     }
-    // Cross-portal prevention: Visitors cannot access admin routes on Student portal
-    if (pathname.startsWith('/admin')) {
-      return NextResponse.redirect(new URL('/student', req.url));
-    }
+    // Default: Display the institutional Dual-Portal Gateway (src/app/page.tsx)
     return NextResponse.next();
   }
 
-  // 5. UNLOCKED / LOCAL ENVIRONMENT DEFAULT
-  // If not constrained by env or subdomain, root '/' defaults cleanly to student portal
-  if (pathname === '/') {
-    return NextResponse.redirect(new URL('/student', req.url));
-  }
-
+  // 3. Independent Concurrent Access:
+  // Both /admin and /student routes are ALWAYS accessible directly.
+  // NEVER block or redirect /student to /admin, and NEVER block or redirect /admin to /student.
   return NextResponse.next();
 }
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
+
 

@@ -194,6 +194,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const lookupData = await lookupRes.json();
           if (lookupData?.email) {
             authEmail = lookupData.email;
+          } else {
+            authEmail = `${cleanUser.toLowerCase()}@sreesakthi.edu.in`;
           }
         } catch (_) {
           authEmail = `${cleanUser.toLowerCase()}@sreesakthi.edu.in`;
@@ -293,6 +295,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const lookupData = await lookupRes.json();
           if (lookupData?.email) {
             authEmail = lookupData.email;
+          } else {
+            authEmail = `${cleanUser.toLowerCase()}@sreesakthi.edu.in`;
           }
         } catch (_) {
           authEmail = `${cleanUser.toLowerCase()}@sreesakthi.edu.in`;
