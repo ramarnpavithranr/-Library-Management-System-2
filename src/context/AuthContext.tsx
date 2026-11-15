@@ -201,32 +201,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Real Supabase Authentication: signInWithPassword
-      let authResult = await supabaseClient.auth.signInWithPassword({
+      const authResult = await supabaseClient.auth.signInWithPassword({
         email: authEmail,
         password: cleanPass,
       });
-
-      // If initial attempt fails and it is the administrator email or username
-      if (
-        authResult.error &&
-        (authEmail.toLowerCase() === 'ramarnpavithranr@gmail.com' ||
-          cleanUser.toLowerCase() === 'ramarnpavithranr@gmail.com' ||
-          cleanUser.toLowerCase() === 'admin')
-      ) {
-        const fallbackRes = await supabaseClient.auth.signInWithPassword({
-          email: 'ramarnpavithranr@gmail.com',
-          password: 'pavithran@gmail.com',
-        });
-        if (!fallbackRes.error && fallbackRes.data?.user) {
-          authResult = fallbackRes;
-          // Synchronize password to the user's entered cleanPass so their password works directly going forward
-          if (cleanPass && cleanPass.length >= 6) {
-            try {
-              await supabaseClient.auth.updateUser({ password: cleanPass });
-            } catch (_) {}
-          }
-        }
-      }
 
       if (authResult.error) {
         return {
