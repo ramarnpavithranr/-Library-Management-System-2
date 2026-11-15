@@ -15,35 +15,13 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLibrary } from '@/context/LibraryContext';
-import { getPortalType } from '@/lib/portal';
 import { CollegeLogo } from '@/components/common/CollegeLogo';
 import { ENV } from '@/config/env';
-import AdminPage from './admin/page';
-import StudentPage from './student/page';
 
 export default function RootHomePage() {
   const router = useRouter();
   const { user, isAdmin, isLoading } = useAuth();
   const { settings } = useLibrary();
-  const portalType = getPortalType();
-
-  // If environment or subdomain strictly dictates one portal, route immediately
-  useEffect(() => {
-    if (isLoading) return;
-    if (portalType === 'admin') {
-      router.replace(isAdmin ? '/admin/dashboard' : '/admin');
-    } else if (portalType === 'student') {
-      router.replace(user?.role === 'student' ? '/student/dashboard' : '/student');
-    }
-  }, [portalType, user, isAdmin, isLoading, router]);
-
-  // Direct render if strict domain isolation is active
-  if (portalType === 'admin') {
-    return <AdminPage />;
-  }
-  if (portalType === 'student') {
-    return <StudentPage />;
-  }
 
   // Unified Portal Landing Page with distinct access buttons and unique URLs
   const collegeName = settings?.collegeName || ENV.COLLEGE_NAME || 'Sree Sakthi Engineering College';

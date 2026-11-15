@@ -31,12 +31,12 @@ export function getPortalType(): PortalType {
  * Returns true only if the environment strictly locks this deployment to Admin
  */
 export function isStrictAdminPortal(): boolean {
-  return (process.env.NEXT_PUBLIC_PORTAL_TYPE || '').toLowerCase().trim() === 'admin';
+  return false;
 }
 
 /**
  * Returns true only if the environment strictly locks this deployment to Student
  */
 export function isStrictStudentPortal(): boolean {
-  return (process.env.NEXT_PUBLIC_PORTAL_TYPE || '').toLowerCase().trim() === 'student';
+  return false;
 }
