@@ -75,7 +75,18 @@ export async function GET(req: NextRequest) {
     try {
       const { data, error } = await supabase.from('membership').select('*');
       if (!error && Array.isArray(data) && data.length > 0) {
-        data.forEach((row: any) => {
+        // Query Students table to resolve student_id if null or unlinked
+        let studentsList: any[] = [];
+        try {
+          const { data: stuData } = await supabase
+            .from('Students')
+            .select('id, auth_id, "Roll Number", Username, Name, email');
+          if (Array.isArray(stuData)) {
+            studentsList = stuData;
+          }
+        } catch (_) {}
+
+        for (const row of data) {
           const rowIdStr = String(row.id);
           const mappedName = row.Name || row.name || 'Student Member';
           const mappedRoll = String(row['Roll Number'] ?? row.roll_number ?? '');
@@ -84,22 +95,48 @@ export async function GET(req: NextRequest) {
           const mappedMembershipId =
             row.membership_id || (mappedStatus === 'approved' ? `LIB-MEM-${row.id}` : `LIB-MEM-PENDING-${row.id}`);
 
+          // Resolve student_id if missing or generic
+          let resolvedStudentId = row.student_id;
+          let studentOfficialRoll = mappedRoll;
+          if (!resolvedStudentId || resolvedStudentId.startsWith('stu-')) {
+            const mappedRollNorm = mappedRoll.replace(/\D/g, '');
+            const matchedStu = studentsList.find((s: any) => {
+              const sRoll = String(s['Roll Number'] || s.roll_number || '');
+              const sRollNorm = sRoll.replace(/\D/g, '');
+              return (
+                (sRollNorm && mappedRollNorm && sRollNorm === mappedRollNorm) ||
+                (s.Name && mappedName && s.Name.toLowerCase() === mappedName.toLowerCase()) ||
+                (row.email && s.email && row.email.toLowerCase() === s.email.toLowerCase())
+              );
+            });
+            if (matchedStu) {
+              resolvedStudentId = matchedStu.auth_id || matchedStu.student_id || String(matchedStu.id);
+              if (matchedStu['Roll Number']) {
+                studentOfficialRoll = String(matchedStu['Roll Number']);
+              }
+              // Backfill student_id into Supabase public.membership so future queries have it
+              try {
+                supabase.from('membership').update({ student_id: resolvedStudentId }).eq('id', row.id);
+              } catch (_) {}
+            }
+          }
+
           const matchIndex = list.findIndex(
             (m) =>
               String(m.id) === rowIdStr ||
-              (row.student_id && m.studentId === row.student_id) ||
+              (resolvedStudentId && m.studentId === resolvedStudentId) ||
               (m.studentName?.toLowerCase() === mappedName?.toLowerCase() &&
                 (m.rollNumber === mappedRoll || m.rollNumber?.replace(/\D/g, '') === mappedRoll.replace(/\D/g, '')))
           );
 
           const existingStudentId = matchIndex >= 0 ? list[matchIndex].studentId : null;
-          const finalStudentId = row.student_id || existingStudentId || (row.Username ? `STU-${row.Username}` : `stu-${row.id}`);
+          const finalStudentId = resolvedStudentId || existingStudentId || (row.Username ? `STU-${row.Username}` : `stu-${row.id}`);
 
           const mapped = {
             id: rowIdStr,
             studentId: finalStudentId,
             studentName: mappedName,
-            rollNumber: matchIndex >= 0 && list[matchIndex].rollNumber ? list[matchIndex].rollNumber : mappedRoll,
+            rollNumber: matchIndex >= 0 && list[matchIndex].rollNumber ? list[matchIndex].rollNumber : studentOfficialRoll,
             department: mappedDept,
             year: row.year || (matchIndex >= 0 ? list[matchIndex].year : '1st Year'),
             phone: row.phone || (matchIndex >= 0 ? list[matchIndex].phone : ''),
@@ -116,7 +153,7 @@ export async function GET(req: NextRequest) {
             issuedDate: row.created_at
               ? new Date(row.created_at).toISOString().split('T')[0]
               : (matchIndex >= 0 ? list[matchIndex].issuedDate : ''),
-            qrData: `SSEC-LIB-MEM:${mappedRoll}:${mappedMembershipId}`,
+            qrData: `SSEC-LIB-MEM:${studentOfficialRoll}:${mappedMembershipId}`,
           };
 
           if (matchIndex >= 0) {
@@ -124,7 +161,7 @@ export async function GET(req: NextRequest) {
           } else {
             list.push(mapped);
           }
-        });
+        }
         saveMembershipsToDisk(list);
       } else if (error) {
         console.warn('Supabase membership fetch warning:', error.message);
@@ -380,8 +417,13 @@ export async function PATCH(req: NextRequest) {
           membership_id: newCardId,
           expiry_date: finalExpiry,
         };
+        if (currentList[index].studentId && !currentList[index].studentId.startsWith('stu-')) {
+          updatePayload.student_id = currentList[index].studentId;
+        }
         if (!isNaN(Number(rowId))) {
           await supabase.from('membership').update(updatePayload).eq('id', Number(rowId));
+        } else if (currentList[index].membershipId) {
+          await supabase.from('membership').update(updatePayload).eq('membership_id', currentList[index].membershipId);
         } else {
           await supabase.from('membership').update(updatePayload).eq('Name', currentList[index].studentName);
         }

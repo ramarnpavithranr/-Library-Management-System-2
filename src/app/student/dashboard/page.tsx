@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BookOpen,
@@ -30,16 +30,46 @@ import { ENV } from '@/config/env';
 export default function StudentDashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const { books, categories, borrowRecords, preBookings, memberships, fines } = useLibrary();
+  const { books, categories, borrowRecords, preBookings, memberships, fines, refreshMemberships } = useLibrary();
 
-  const currentStudentId = user?.studentId || '';
+  useEffect(() => {
+    refreshMemberships();
+  }, []);
+
+  const currentStudentId = user?.studentId || user?.id || user?.username || '';
   const currentStudentName = user?.name || 'Student';
 
   // Student specific data
   const myBorrows = borrowRecords.filter((r) => r.studentId === currentStudentId && r.status === 'borrowed');
   const myOverdue = borrowRecords.filter((r) => r.studentId === currentStudentId && r.status === 'overdue');
   const myPreBooks = preBookings.filter((p) => p.studentId === currentStudentId);
-  const myMembership = memberships.find((m) => m.studentId === currentStudentId);
+
+  const userRollNorm = (user?.rollNumber || '').replace(/\D/g, '');
+  const myMembership =
+    memberships.find(
+      (m) =>
+        m.status === 'approved' &&
+        (m.studentId === currentStudentId ||
+          m.studentId === user?.id ||
+          m.studentId === user?.username ||
+          (user?.rollNumber && m.rollNumber && m.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
+          (userRollNorm && m.rollNumber && m.rollNumber.replace(/\D/g, '') === userRollNorm) ||
+          (user?.username && m.studentId && m.studentId.toLowerCase() === user.username.toLowerCase()) ||
+          (user?.email && m.email && m.email.toLowerCase() === user.email.toLowerCase()) ||
+          (user?.name && m.studentName && m.studentName.trim().toLowerCase() === user.name.trim().toLowerCase()))
+    ) ||
+    memberships.find(
+      (m) =>
+        m.studentId === currentStudentId ||
+        m.studentId === user?.id ||
+        m.studentId === user?.username ||
+        (user?.rollNumber && m.rollNumber && m.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
+        (userRollNorm && m.rollNumber && m.rollNumber.replace(/\D/g, '') === userRollNorm) ||
+        (user?.username && m.studentId && m.studentId.toLowerCase() === user.username.toLowerCase()) ||
+        (user?.email && m.email && m.email.toLowerCase() === user.email.toLowerCase()) ||
+        (user?.name && m.studentName && m.studentName.trim().toLowerCase() === user.name.trim().toLowerCase())
+    );
+
   const myFines = fines.filter((f) => f.studentId === currentStudentId && f.status === 'unpaid');
   const totalMyFine = myFines.reduce((sum, f) => sum + f.amount, 0);
 

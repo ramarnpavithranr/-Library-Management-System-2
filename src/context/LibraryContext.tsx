@@ -240,6 +240,57 @@ export const mapFrontendStudentToSupabase = (s: Student | Omit<Student, 'id' | '
   return row;
 };
 
+export const mapSupabaseMembershipToFrontend = (row: any): MembershipCard => {
+  const rowId = String(row.id);
+  const status = (row.status as 'pending' | 'approved' | 'rejected') || 'pending';
+  const roll = String(row['Roll Number'] ?? row.roll_number ?? '');
+  const membershipId =
+    row.membership_id || (status === 'approved' ? `LIB-MEM-${row.id}` : `LIB-MEM-PENDING-${row.id}`);
+
+  return {
+    id: rowId,
+    studentId: row.student_id || `stu-${row.id}`,
+    studentName: row.Name || row.name || 'Student Member',
+    rollNumber: roll,
+    department: row.Department || row.department || 'Computer Science & Engineering',
+    year: row.year || '1st Year',
+    membershipId,
+    appliedDate: row.created_at
+      ? new Date(row.created_at).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0],
+    status,
+    expiryDate: row.expiry_date || '',
+    issuedDate: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : '',
+    photo:
+      row.photo ||
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=400&auto=format&fit=crop',
+    phone: row.phone || '',
+    email: row.email || '',
+    qrData: `SSEC-LIB-MEM:${roll}:${membershipId}`,
+  };
+};
+
+const mergeMemberships = (prev: MembershipCard[], incoming: MembershipCard[]): MembershipCard[] => {
+  const merged = [...incoming];
+  prev.forEach((localM) => {
+    const localRollNorm = (localM.rollNumber || '').replace(/\D/g, '');
+    const exists = merged.some((m) => {
+      const mRollNorm = (m.rollNumber || '').replace(/\D/g, '');
+      return (
+        m.id === localM.id ||
+        (m.studentId && localM.studentId && m.studentId === localM.studentId) ||
+        (m.membershipId && localM.membershipId && m.membershipId === localM.membershipId) ||
+        (localRollNorm && mRollNorm && localRollNorm === mRollNorm) ||
+        (m.email && localM.email && m.email.toLowerCase() === localM.email.toLowerCase())
+      );
+    });
+    if (!exists) {
+      merged.push(localM);
+    }
+  });
+  return merged;
+};
+
 const safeSupabaseSync = async (task: () => PromiseLike<any>) => {
   try {
     const res = await task();
@@ -306,6 +357,35 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
+  const refreshMemberships = async () => {
+    try {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch('/api/membership', {
+        headers: { ...authHeaders },
+      });
+      const data = await res.json().catch(() => null);
+      if (data?.success && Array.isArray(data.memberships) && data.memberships.length > 0) {
+        setMemberships((prev) => mergeMemberships(prev, data.memberships));
+      }
+
+      // Also sync directly via Supabase client if session available
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const { data: supaMems, error: supaErr } = await supabase
+          .from('membership')
+          .select('*')
+          .order('id', { ascending: true });
+
+        if (!supaErr && Array.isArray(supaMems) && supaMems.length > 0) {
+          const mapped = supaMems.map(mapSupabaseMembershipToFrontend);
+          setMemberships((prev) => mergeMemberships(prev, mapped));
+        }
+      }
+    } catch (e) {
+      console.warn('Notice in refreshMemberships:', e);
+    }
+  };
+
   const updateSettings = async (newSettings: Partial<InstitutionSettings>): Promise<boolean> => {
     try {
       const updated = { ...settings, ...newSettings };
@@ -362,27 +442,11 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Load initial server data
     refreshSettings();
     refreshPreBookings();
-
-    // Sync memberships from central server API across devices
-    fetch('/api/membership')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.success && Array.isArray(data.memberships)) {
-          setMemberships(data.memberships);
-        }
-      })
-      .catch((err) => console.warn('Notice loading server memberships:', err));
+    refreshMemberships();
 
     // Periodic synchronization across portals (Admin <-> Student) every 4 seconds
     const syncInterval = setInterval(() => {
-      fetch('/api/membership')
-        .then((res) => res.json())
-        .then((data) => {
-          if (data?.success && Array.isArray(data.memberships)) {
-            setMemberships(data.memberships);
-          }
-        })
-        .catch(() => {});
+      refreshMemberships();
 
       fetch('/api/pre-bookings')
         .then((res) => res.json())
@@ -403,7 +467,7 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .catch(() => {});
     }, 4000);
 
-    // Connect to Supabase tables 'Books' and 'Students'
+    // Connect to Supabase tables 'Books', 'Students', and 'membership'
     const supabase = getSupabaseClient();
     if (supabase) {
       safeSupabaseSync(async () => {
@@ -417,6 +481,14 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const { data, error } = await supabase.from('Students').select('*').order('id', { ascending: true });
         if (!error && Array.isArray(data)) {
           setStudents(data.map(mapSupabaseStudentToFrontend));
+        }
+      });
+
+      safeSupabaseSync(async () => {
+        const { data, error } = await supabase.from('membership').select('*').order('id', { ascending: true });
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const mapped = data.map(mapSupabaseMembershipToFrontend);
+          setMemberships((prev) => mergeMemberships(prev, mapped));
         }
       });
     }
@@ -1121,30 +1193,6 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   // Membership
-  const refreshMemberships = async () => {
-    try {
-      const authHeaders = await getAuthHeaders();
-      const res = await fetch('/api/membership', {
-        headers: { ...authHeaders },
-      });
-      const data = await res.json();
-      if (data?.success && Array.isArray(data.memberships)) {
-        setMemberships((prev) => {
-          const serverList: MembershipCard[] = data.memberships;
-          const merged = [...serverList];
-          prev.forEach((localM) => {
-            if (!merged.some((m) => m.id === localM.id || m.studentId === localM.studentId)) {
-              merged.push(localM);
-            }
-          });
-          return merged;
-        });
-      }
-    } catch (e) {
-      console.warn('Notice in refreshMemberships:', e);
-    }
-  };
-
   const applyForMembership = async (
     studentId: string,
     photoOrData?: string | {
@@ -1313,6 +1361,23 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .catch(err => console.warn('Server sync notice for approve:', err));
     });
 
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      safeSupabaseSync(async () => {
+        const numId = !isNaN(Number(membershipId)) ? Number(membershipId) : 0;
+        let q = supabase.from('membership').update({
+          status: 'approved',
+          membership_id: generatedId,
+          expiry_date: expiryDateStr,
+        });
+        if (numId > 0) {
+          await q.eq('id', numId);
+        } else {
+          await q.eq('membership_id', membershipId);
+        }
+      });
+    }
+
     const mem = memberships.find(m => m.id === membershipId || m.membershipId === membershipId);
     if (mem) {
       setNotifications(prev => [
@@ -1344,8 +1409,25 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
           id: membershipId,
           status: 'rejected',
         }),
-      }).catch(err => console.warn('Server sync notice for reject:', err));
+      })
+        .then(() => refreshMemberships())
+        .catch(err => console.warn('Server sync notice for reject:', err));
     });
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      safeSupabaseSync(async () => {
+        const numId = !isNaN(Number(membershipId)) ? Number(membershipId) : 0;
+        let q = supabase.from('membership').update({
+          status: 'rejected',
+        });
+        if (numId > 0) {
+          await q.eq('id', numId);
+        } else {
+          await q.eq('membership_id', membershipId);
+        }
+      });
+    }
   };
 
   const resetStudentMembership = (studentId: string) => {
@@ -1355,8 +1437,17 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       fetch(`/api/membership?studentId=${encodeURIComponent(studentId)}`, {
         method: 'DELETE',
         headers: { ...authHeaders },
-      }).catch(err => console.warn('Server sync notice for delete:', err));
+      })
+        .then(() => refreshMemberships())
+        .catch(err => console.warn('Server sync notice for delete:', err));
     });
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      safeSupabaseSync(async () => {
+        await supabase.from('membership').delete().eq('student_id', studentId);
+      });
+    }
   };
 
   // Fine Management

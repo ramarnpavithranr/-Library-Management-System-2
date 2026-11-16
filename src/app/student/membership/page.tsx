@@ -32,17 +32,30 @@ export default function StudentMembershipPage() {
 
   const currentStudentId = user?.studentId || user?.id || user?.username || '';
   const userRollNorm = (user?.rollNumber || '').replace(/\D/g, '');
-  const myCard = memberships.find(
-    (m) =>
-      m.studentId === currentStudentId ||
-      m.studentId === user?.id ||
-      m.studentId === user?.username ||
-      (user?.rollNumber && m.rollNumber && m.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
-      (userRollNorm && m.rollNumber && m.rollNumber.replace(/\D/g, '') === userRollNorm) ||
-      (user?.username && m.studentId && m.studentId.toLowerCase() === user.username.toLowerCase()) ||
-      (user?.email && m.email && m.email.toLowerCase() === user.email.toLowerCase()) ||
-      (user?.name && m.studentName && m.studentName.trim().toLowerCase() === user.name.trim().toLowerCase())
-  );
+  const myCard =
+    memberships.find(
+      (m) =>
+        m.status === 'approved' &&
+        (m.studentId === currentStudentId ||
+          m.studentId === user?.id ||
+          m.studentId === user?.username ||
+          (user?.rollNumber && m.rollNumber && m.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
+          (userRollNorm && m.rollNumber && m.rollNumber.replace(/\D/g, '') === userRollNorm) ||
+          (user?.username && m.studentId && m.studentId.toLowerCase() === user.username.toLowerCase()) ||
+          (user?.email && m.email && m.email.toLowerCase() === user.email.toLowerCase()) ||
+          (user?.name && m.studentName && m.studentName.trim().toLowerCase() === user.name.trim().toLowerCase()))
+    ) ||
+    memberships.find(
+      (m) =>
+        m.studentId === currentStudentId ||
+        m.studentId === user?.id ||
+        m.studentId === user?.username ||
+        (user?.rollNumber && m.rollNumber && m.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
+        (userRollNorm && m.rollNumber && m.rollNumber.replace(/\D/g, '') === userRollNorm) ||
+        (user?.username && m.studentId && m.studentId.toLowerCase() === user.username.toLowerCase()) ||
+        (user?.email && m.email && m.email.toLowerCase() === user.email.toLowerCase()) ||
+        (user?.name && m.studentName && m.studentName.trim().toLowerCase() === user.name.trim().toLowerCase())
+    );
   const currentStudent = students.find(
     (s) =>
       s.studentId === currentStudentId ||
