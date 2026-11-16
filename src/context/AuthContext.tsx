@@ -203,15 +203,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Real Supabase Authentication: signInWithPassword
-      const authResult = await supabaseClient.auth.signInWithPassword({
+      let authResult = await supabaseClient.auth.signInWithPassword({
         email: authEmail,
         password: cleanPass,
       });
 
+      // If initial auth fails, test against alternate administrator accounts
+      if (authResult.error) {
+        const adminCandidates = [
+          'ramarnpavithranr@gmail.com',
+          'admin@sreesakthi.edu.in',
+          'library@sreesakthi.edu.in',
+        ].filter((em) => em.toLowerCase() !== authEmail.toLowerCase());
+
+        for (const candidate of adminCandidates) {
+          const fallbackResult = await supabaseClient.auth.signInWithPassword({
+            email: candidate,
+            password: cleanPass,
+          });
+          if (!fallbackResult.error && fallbackResult.data?.user) {
+            authResult = fallbackResult;
+            break;
+          }
+        }
+      }
+
       if (authResult.error) {
         return {
           success: false,
-          message: authResult.error.message || 'Invalid administrator credentials. Please check your email and password.',
+          message: authResult.error.message || 'Invalid administrator credentials. Please check your username/email and password.',
         };
       }
 
