@@ -7,6 +7,12 @@ try {
 
 let pool: Pool | null = null;
 
+/**
+ * Standard PostgreSQL Connection Pool
+ * Note: Core application features communicate directly with Supabase via the official
+ * @supabase/supabase-js HTTPS client to ensure maximum reliability and avoid serverless
+ * TLS connection pool issues.
+ */
 export function getDbPool(): Pool {
   if (pool) return pool;
 
@@ -18,7 +24,7 @@ export function getDbPool(): Pool {
   if (connectionString) {
     pool = new Pool({
       connectionString,
-      ssl: { rejectUnauthorized: false },
+      ssl: true,
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
@@ -30,7 +36,7 @@ export function getDbPool(): Pool {
       database: process.env.PGDATABASE || process.env.DB_NAME || 'postgres',
       user: process.env.PGUSER || process.env.DB_USER,
       password: process.env.PGPASSWORD || process.env.DB_PASSWORD,
-      ssl: { rejectUnauthorized: false },
+      ssl: true,
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
@@ -51,4 +57,3 @@ export async function query<R extends QueryResultRow = any>(
   const dbPool = getDbPool();
   return dbPool.query<R>(text, params);
 }
-

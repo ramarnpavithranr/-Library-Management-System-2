@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDbPool } from '@/lib/db';
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://yvogbzoolyosvilgtyxi.supabase.co';
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_I2tfBLTvezL4ckvlIjDgoQ_IL3blLtj';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,159 +15,94 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Identifier required.' }, { status: 400 });
     }
 
-    const pool = getDbPool();
-    const client = await pool.connect();
+    const client = SUPABASE_SERVICE_KEY
+      ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
+      : createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
-    try {
-      if (portal === 'student') {
-        // If an email was directly provided
-        if (cleanId.includes('@')) {
-          // Check that this email actually belongs to a student
-          const studentEmailCheck = await client.query(
-            `
-            SELECT email, "Username", "Roll Number"
-            FROM public."Students"
-            WHERE lower(email) = lower($1)
-            LIMIT 1;
-            `,
-            [cleanId]
-          );
+    if (portal === 'student') {
+      // 1. If an email was directly provided
+      if (cleanId.includes('@')) {
+        const { data: studentEmailCheck } = await client
+          .from('Students')
+          .select('email, "Username", "Roll Number"')
+          .ilike('email', cleanId)
+          .limit(1);
 
-          if (studentEmailCheck.rows.length > 0) {
-            const row = studentEmailCheck.rows[0];
-            return NextResponse.json({
-              success: true,
-              email: row.email.toLowerCase(),
-              username: row.Username,
-              rollNumber: row['Roll Number'],
-            });
-          }
-
-          // Also check auth.users with student role
-          const authStudentCheck = await client.query(
-            `
-            SELECT email, raw_user_meta_data
-            FROM auth.users
-            WHERE lower(email) = lower($1)
-              AND raw_user_meta_data->>'role' = 'student'
-            LIMIT 1;
-            `,
-            [cleanId]
-          );
-
-          if (authStudentCheck.rows.length > 0) {
-            return NextResponse.json({
-              success: true,
-              email: authStudentCheck.rows[0].email.toLowerCase(),
-              username: authStudentCheck.rows[0].raw_user_meta_data?.username,
-              rollNumber: authStudentCheck.rows[0].raw_user_meta_data?.rollNumber,
-            });
-          }
-
-          // Not a student account
-          return NextResponse.json(
-            { success: false, message: 'Student account not found with this email.' },
-            { status: 404 }
-          );
-        }
-
-        // Query Students table for Username or Roll Number
-        const studentRes = await client.query(
-          `
-          SELECT email, "Username", "Roll Number"
-          FROM public."Students"
-          WHERE lower("Username") = lower($1)
-             OR upper("Roll Number") = upper($1)
-          LIMIT 1;
-          `,
-          [cleanId]
-        );
-
-        if (studentRes.rows.length > 0) {
-          const row = studentRes.rows[0];
-          const resolvedEmail =
-            row.email ||
-            `${String(row.Username || cleanId).toLowerCase()}@sreesakthi.edu.in`;
-
+        if (studentEmailCheck && studentEmailCheck.length > 0) {
+          const row = studentEmailCheck[0];
           return NextResponse.json({
             success: true,
-            email: resolvedEmail.toLowerCase(),
+            email: (row.email || cleanId).toLowerCase(),
             username: row.Username,
             rollNumber: row['Roll Number'],
           });
         }
 
-        return NextResponse.json(
-          { success: false, message: 'No student found with this Username or Roll Number.' },
-          { status: 404 }
-        );
+        return NextResponse.json({
+          success: true,
+          email: cleanId.toLowerCase(),
+        });
       }
 
-      if (portal === 'admin') {
-        // If an email was directly provided
-        if (cleanId.includes('@')) {
-          const adminEmailCheck = await client.query(
-            `
-            SELECT email, raw_user_meta_data
-            FROM auth.users
-            WHERE lower(email) = lower($1)
-              AND (raw_user_meta_data->>'role' = 'admin' OR raw_user_meta_data->>'role' IS NULL)
-            LIMIT 1;
-            `,
-            [cleanId]
-          );
+      // 2. Query Students table for Username or Roll Number via HTTPS REST
+      const { data: studentRes } = await client
+        .from('Students')
+        .select('email, "Username", "Roll Number"')
+        .or(`Username.ilike.${cleanId},"Roll Number".ilike.${cleanId}`)
+        .limit(1);
 
-          if (adminEmailCheck.rows.length > 0) {
-            return NextResponse.json({
-              success: true,
-              email: adminEmailCheck.rows[0].email.toLowerCase(),
-            });
-          }
+      if (studentRes && studentRes.length > 0) {
+        const row = studentRes[0];
+        const resolvedEmail =
+          row.email ||
+          `${String(row.Username || cleanId).toLowerCase()}@sreesakthi.edu.in`;
 
-          return NextResponse.json(
-            { success: false, message: 'Administrator account not found with this email.' },
-            { status: 404 }
-          );
-        }
-
-        // Query auth.users for an admin account matching username or email prefix
-        const adminRes = await client.query(
-          `
-          SELECT email, raw_user_meta_data
-          FROM auth.users
-          WHERE (lower(raw_user_meta_data->>'username') = lower($1)
-             OR lower(email) = lower($2))
-             AND (raw_user_meta_data->>'role' = 'admin' OR raw_user_meta_data->>'role' IS NULL)
-          LIMIT 1;
-          `,
-          [cleanId, `${cleanId.toLowerCase()}@sreesakthi.edu.in`]
-        );
-
-        if (adminRes.rows.length > 0) {
-          return NextResponse.json({
-            success: true,
-            email: adminRes.rows[0].email.toLowerCase(),
-          });
-        }
-
-        return NextResponse.json(
-          { success: false, message: 'Administrator account not found with this username.' },
-          { status: 404 }
-        );
+        return NextResponse.json({
+          success: true,
+          email: resolvedEmail.toLowerCase(),
+          username: row.Username,
+          rollNumber: row['Roll Number'],
+        });
       }
 
-      // Generic lookup fallback if portal is not specified
+      // Default institutional email mapping fallback
+      return NextResponse.json({
+        success: true,
+        email: `${cleanId.toLowerCase()}@sreesakthi.edu.in`,
+      });
+    }
+
+    if (portal === 'admin') {
       if (cleanId.includes('@')) {
-        return NextResponse.json({ success: true, email: cleanId.toLowerCase() });
+        return NextResponse.json({
+          success: true,
+          email: cleanId.toLowerCase(),
+        });
+      }
+
+      // Default Administrator mapping
+      if (cleanId.toLowerCase() === 'admin' || cleanId.toLowerCase() === 'ramarnpavithranr') {
+        return NextResponse.json({
+          success: true,
+          email: 'ramarnpavithranr@gmail.com',
+        });
       }
 
       return NextResponse.json({
         success: true,
         email: `${cleanId.toLowerCase()}@sreesakthi.edu.in`,
       });
-    } finally {
-      client.release();
     }
+
+    // Generic fallback if portal is not specified
+    if (cleanId.includes('@')) {
+      return NextResponse.json({ success: true, email: cleanId.toLowerCase() });
+    }
+
+    return NextResponse.json({
+      success: true,
+      email: `${cleanId.toLowerCase()}@sreesakthi.edu.in`,
+    });
   } catch (err: any) {
     console.error('Error in /api/auth/lookup:', err);
     return NextResponse.json({

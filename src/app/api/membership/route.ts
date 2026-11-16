@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
-import { getDbPool } from '@/lib/db';
 
 // Central in-memory cache to ensure instant cross-device availability
 declare global {
@@ -197,83 +196,41 @@ export async function POST(req: NextRequest) {
       qrData: `SSEC-LIB-MEM:${cleanRollNumber}:${generatedPendingCardId}`,
     };
 
-    // Store in Supabase table public.membership
+    // Store in Supabase table public.membership via HTTPS REST client
     let supabaseSuccess = false;
     let supabaseErrorMsg = '';
 
-    // Primary: Direct PostgreSQL pooler insert
-    try {
-      const pool = getDbPool();
-      const client = await pool.connect();
+    const supabase = getSupabase(req);
+    if (supabase) {
       try {
         const numericRoll = parseInt(cleanRollNumber.replace(/\D/g, ''), 10) || Math.floor(1000 + Math.random() * 9000);
-        const insRes = await client.query(
-          `
-          INSERT INTO public.membership (
-            "Name", "Roll Number", "Department", student_id, membership_id, status, photo, phone, email, year
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-          RETURNING id;
-          `,
-          [
-            cleanName,
-            numericRoll,
-            cleanDept,
-            cleanStudentId,
-            generatedPendingCardId,
-            'pending',
-            cleanPhoto,
-            cleanPhone,
-            cleanEmail,
-            cleanYear,
-          ]
-        );
+        const payload: any = {
+          Name: cleanName,
+          "Roll Number": numericRoll,
+          Department: cleanDept,
+          student_id: cleanStudentId,
+          membership_id: generatedPendingCardId,
+          status: 'pending',
+          photo: cleanPhoto,
+          phone: cleanPhone,
+          email: cleanEmail,
+          year: cleanYear,
+        };
 
-        if (insRes.rows && insRes.rows[0]) {
-          createdId = String(insRes.rows[0].id);
-          newApp.id = createdId;
+        const { data: insData, error: insErr } = await supabase
+          .from('membership')
+          .insert([payload])
+          .select();
+
+        if (!insErr && insData && insData[0]) {
           supabaseSuccess = true;
+          createdId = String(insData[0].id);
+          newApp.id = createdId;
+        } else if (insErr) {
+          supabaseErrorMsg = insErr.message;
         }
-      } finally {
-        client.release();
-      }
-    } catch (pgErr: any) {
-      console.warn('Direct PG insert notice:', pgErr.message);
-    }
-
-    // Fallback: Supabase client
-    if (!supabaseSuccess) {
-      const supabase = getSupabase(req);
-      if (supabase) {
-        try {
-          const numericRoll = parseInt(cleanRollNumber.replace(/\D/g, ''), 10) || Math.floor(1000 + Math.random() * 9000);
-          const payload: any = {
-            Name: cleanName,
-            "Roll Number": numericRoll,
-            Department: cleanDept,
-            student_id: cleanStudentId,
-            membership_id: generatedPendingCardId,
-            status: 'pending',
-            photo: cleanPhoto,
-            phone: cleanPhone,
-            email: cleanEmail,
-            year: cleanYear,
-          };
-
-          const { data: insData, error: insErr } = await supabase
-            .from('membership')
-            .insert([payload])
-            .select();
-
-          if (!insErr && insData && insData[0]) {
-            supabaseSuccess = true;
-            createdId = String(insData[0].id);
-            newApp.id = createdId;
-          } else if (insErr) {
-            supabaseErrorMsg = insErr.message;
-          }
-        } catch (e: any) {
-          supabaseErrorMsg = e?.message || 'Supabase insert exception';
-        }
+      } catch (e: any) {
+        supabaseErrorMsg = e?.message || 'Supabase insert exception';
       }
     }
 
@@ -413,45 +370,23 @@ export async function PATCH(req: NextRequest) {
 
     saveMembershipsToDisk(currentList);
 
-    // Sync status to Supabase table public.membership
-    // Try via direct pool connection first
-    try {
-      const pool = getDbPool();
-      const client = await pool.connect();
+    // Sync status to Supabase table public.membership via HTTPS client
+    const supabase = getSupabase(req);
+    if (supabase) {
       try {
         const rowId = currentList[index].id;
+        const updatePayload: any = {
+          status: targetStatus,
+          membership_id: newCardId,
+          expiry_date: finalExpiry,
+        };
         if (!isNaN(Number(rowId))) {
-          await client.query(
-            `UPDATE public.membership SET status = $1, membership_id = $2, expiry_date = $3 WHERE id = $4;`,
-            [targetStatus, newCardId, finalExpiry, Number(rowId)]
-          );
+          await supabase.from('membership').update(updatePayload).eq('id', Number(rowId));
         } else {
-          await client.query(
-            `UPDATE public.membership SET status = $1, membership_id = $2, expiry_date = $3 WHERE lower("Name") = lower($4) OR student_id = $5;`,
-            [targetStatus, newCardId, finalExpiry, currentList[index].studentName, currentList[index].studentId]
-          );
+          await supabase.from('membership').update(updatePayload).eq('Name', currentList[index].studentName);
         }
-      } finally {
-        client.release();
-      }
-    } catch (pgErr) {
-      console.warn('PG update notice for membership PATCH:', pgErr);
-      // Fallback via Supabase client
-      const supabase = getSupabase(req);
-      if (supabase) {
-        try {
-          const rowId = currentList[index].id;
-          const updatePayload: any = {
-            status: targetStatus,
-            membership_id: newCardId,
-            expiry_date: finalExpiry,
-          };
-          if (!isNaN(Number(rowId))) {
-            await supabase.from('membership').update(updatePayload).eq('id', Number(rowId));
-          } else {
-            await supabase.from('membership').update(updatePayload).eq('Name', currentList[index].studentName);
-          }
-        } catch (_) {}
+      } catch (err: any) {
+        console.warn('Supabase update notice for membership PATCH:', err?.message);
       }
     }
 
@@ -486,19 +421,16 @@ export async function DELETE(req: NextRequest) {
     );
     saveMembershipsToDisk(currentList);
 
-    try {
-      const pool = getDbPool();
-      const client = await pool.connect();
+    const supabase = getSupabase(req);
+    if (supabase && toDelete) {
       try {
-        if (toDelete && !isNaN(Number(toDelete.id))) {
-          await client.query('DELETE FROM public.membership WHERE id = $1;', [Number(toDelete.id)]);
-        } else if (toDelete) {
-          await client.query('DELETE FROM public.membership WHERE lower("Name") = lower($1) OR student_id = $2;', [toDelete.studentName, toDelete.studentId]);
+        if (!isNaN(Number(toDelete.id))) {
+          await supabase.from('membership').delete().eq('id', Number(toDelete.id));
+        } else {
+          await supabase.from('membership').delete().eq('Name', toDelete.studentName);
         }
-      } finally {
-        client.release();
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     return NextResponse.json({ success: true, message: 'Membership record removed.' });
   } catch (err: any) {

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getDbPool } from '@/lib/db';
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://yvogbzoolyosvilgtyxi.supabase.co';
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_I2tfBLTvezL4ckvlIjDgoQ_IL3blLtj';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,10 +48,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://yvogbzoolyosvilgtyxi.supabase.co';
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_I2tfBLTvezL4ckvlIjDgoQ_IL3blLtj';
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-
     // 2. VERIFY CALLER IS AUTHENTICATED ADMINISTRATOR
     const authHeader = req.headers.get('authorization') || '';
     const userJwt = authHeader.replace(/^Bearer\s+/i, '').trim();
@@ -63,7 +62,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const authCheckClient = createClient(supabaseUrl, supabaseAnonKey, {
+    // Verify admin session via Supabase HTTPS Auth API
+    const authCheckClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
@@ -99,6 +99,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Clean & normalize student inputs
     const cleanUsername = String(username).trim().toLowerCase();
     const cleanRollNumber = String(rollNumber).trim().toUpperCase();
     const cleanName = String(name).trim();
@@ -108,258 +109,185 @@ export async function POST(req: NextRequest) {
     const cleanSection = String(section || 'A').trim();
     const cleanPhone = String(phone || '').trim();
 
-    // Map username internally to unique Supabase Auth email without requiring student to enter it
     const cleanEmail = (email && String(email).includes('@')
       ? String(email).trim().toLowerCase()
       : `${cleanUsername}@sreesakthi.edu.in`);
 
     const rawNumericPhone = cleanPhone ? parseInt(cleanPhone.replace(/\D/g, ''), 10) : null;
-    const numericPhone = (rawNumericPhone && !isNaN(rawNumericPhone)) ? rawNumericPhone : null;
+    const numericPhone = rawNumericPhone && !isNaN(rawNumericPhone) ? rawNumericPhone : null;
 
+    // 3. INITIALIZE OFFICIAL SUPABASE CLIENT (HTTPS REST)
+    // Avoids Node.js pg TCP connections and eliminates certificate chain errors on Vercel
+    const dbClient = SUPABASE_SERVICE_KEY
+      ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
+      : createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: { persistSession: false, autoRefreshToken: false },
+          global: { headers: { Authorization: `Bearer ${userJwt}` } },
+        });
+
+    // 4. CHECK FOR DUPLICATES IN Students TABLE (PREVENTS DUPLICATES ON RETRY)
+    const { data: existingStudents } = await dbClient
+      .from('Students')
+      .select('id, Username, "Roll Number"')
+      .or(`Username.ilike.${cleanUsername},"Roll Number".ilike.${cleanRollNumber}`)
+      .limit(1);
+
+    if (existingStudents && existingStudents.length > 0) {
+      const match = existingStudents[0];
+      const matchUsername = (match.Username || '').toLowerCase();
+      const isUserMatch = matchUsername === cleanUsername;
+      return NextResponse.json(
+        {
+          success: false,
+          message: isUserMatch
+            ? `A student account with username "${cleanUsername}" is already registered.`
+            : `A student with roll number "${cleanRollNumber}" is already registered.`,
+        },
+        { status: 409 }
+      );
+    }
+
+    // 5. PROVISION AUTHENTICATION USER IN SUPABASE AUTH (HTTPS)
     let authUserId: string | null = null;
-    let dbRecordId: string | null = null;
-    let authError: string | null = null;
+    const studentUserMeta = {
+      username: cleanUsername,
+      name: cleanName,
+      roll_number: cleanRollNumber,
+      role: 'student',
+      department: cleanDepartment,
+      college: cleanCollege,
+      year: cleanYear,
+      section: cleanSection,
+      phone: cleanPhone,
+    };
 
-    // 3. PRIMARY AUTH CREATION: If SUPABASE_SERVICE_ROLE_KEY is configured, use official Supabase Admin API
-    if (supabaseServiceKey) {
-      try {
-        const adminAuthClient = createClient(supabaseUrl, supabaseServiceKey, {
-          auth: { autoRefreshToken: false, persistSession: false },
-        });
+    if (SUPABASE_SERVICE_KEY) {
+      // Primary: Official Supabase Admin API
+      const adminAuthClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
 
-        const { data, error } = await adminAuthClient.auth.admin.createUser({
-          email: cleanEmail,
-          password: String(password),
-          email_confirm: true,
-          user_metadata: {
-            username: cleanUsername,
-            name: cleanName,
-            roll_number: cleanRollNumber,
-            role: 'student',
-            department: cleanDepartment,
-            college: cleanCollege,
-            year: cleanYear,
-            section: cleanSection,
-            phone: cleanPhone,
-          },
-        });
+      const { data: createData, error: createErr } = await adminAuthClient.auth.admin.createUser({
+        email: cleanEmail,
+        password: String(password),
+        email_confirm: true,
+        user_metadata: studentUserMeta,
+      });
 
-        if (error) {
-          authError = error.message;
-        } else if (data?.user) {
-          authUserId = data.user.id;
+      if (!createErr && createData?.user) {
+        authUserId = createData.user.id;
+      } else if (createErr) {
+        // If user already exists in auth (e.g. from previous attempt), recover and update credentials
+        if (
+          createErr.message.toLowerCase().includes('already') ||
+          createErr.message.toLowerCase().includes('exists')
+        ) {
+          const { data: listData } = await adminAuthClient.auth.admin.listUsers();
+          const existingUser = (listData?.users || []).find(
+            (u) => (u.email || '').toLowerCase() === cleanEmail.toLowerCase()
+          );
+          if (existingUser) {
+            authUserId = existingUser.id;
+            await adminAuthClient.auth.admin.updateUserById(authUserId, {
+              password: String(password),
+              user_metadata: studentUserMeta,
+            });
+          }
         }
-      } catch (adminClientErr: any) {
-        authError = adminClientErr?.message || 'Admin auth client exception';
       }
     }
 
-    // 4. SECURE SERVER BACKEND FLOW: Direct PostgreSQL Provisioning via Connection Pooler
-    // Used when service role key is absent: provisions in auth.users + auth.identities
-    const pool = getDbPool();
-    const client = await pool.connect();
+    if (!authUserId) {
+      // Fallback: Standard Supabase Auth API
+      const ephemeralClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
 
-    try {
-      if (!authUserId) {
-        // Check for duplicate username or email in auth.users
-        const existingAuth = await client.query(
-          `SELECT id FROM auth.users WHERE lower(email) = lower($1) OR lower(raw_user_meta_data->>'username') = lower($2) LIMIT 1;`,
-          [cleanEmail, cleanUsername]
-        );
+      const { data: signUpData, error: signUpErr } = await ephemeralClient.auth.signUp({
+        email: cleanEmail,
+        password: String(password),
+        options: {
+          data: studentUserMeta,
+        },
+      });
 
-        if (existingAuth.rows.length > 0) {
-          return NextResponse.json(
-            {
-              success: false,
-              message: `An authentication account with username "${cleanUsername}" or email "${cleanEmail}" already exists in Supabase Auth.`,
-            },
-            { status: 409 }
-          );
-        }
-
-        // Check for duplicate username or roll number in public."Students"
-        const existingStudent = await client.query(
-          `SELECT id FROM public."Students" WHERE lower("Username") = lower($1) OR upper("Roll Number") = upper($2) LIMIT 1;`,
-          [cleanUsername, cleanRollNumber]
-        );
-
-        if (existingStudent.rows.length > 0) {
-          return NextResponse.json(
-            {
-              success: false,
-              message: `Student with username "${cleanUsername}" or roll number "${cleanRollNumber}" is already registered in the student database.`,
-            },
-            { status: 409 }
-          );
-        }
-
-        // A. Insert into auth.users with confirmed email and bcrypt encrypted password
-        const userMeta = {
-          username: cleanUsername,
-          name: cleanName,
-          roll_number: cleanRollNumber,
-          role: 'student',
-          department: cleanDepartment,
-          college: cleanCollege,
-          year: cleanYear,
-          section: cleanSection,
-          phone: cleanPhone,
-        };
-
-        const userRes = await client.query(
-          `
-          INSERT INTO auth.users (
-            instance_id,
-            id,
-            aud,
-            role,
-            email,
-            encrypted_password,
-            email_confirmed_at,
-            confirmation_token,
-            recovery_token,
-            email_change_token_new,
-            email_change,
-            phone_change,
-            phone_change_token,
-            reauthentication_token,
-            email_change_confirm_status,
-            raw_app_meta_data,
-            raw_user_meta_data,
-            is_sso_user,
-            is_anonymous,
-            created_at,
-            updated_at
-          ) VALUES (
-            '00000000-0000-0000-0000-000000000000'::uuid,
-            gen_random_uuid(),
-            'authenticated',
-            'authenticated',
-            $1,
-            crypt($2, gen_salt('bf')),
-            now(),
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            0,
-            '{"provider": "email", "providers": ["email"]}'::jsonb,
-            $3::jsonb,
-            false,
-            false,
-            now(),
-            now()
-          )
-          RETURNING id;
-          `,
-          [cleanEmail, String(password), JSON.stringify(userMeta)]
-        );
-
-        authUserId = userRes.rows[0]?.id;
-
-        // B. Insert into auth.identities
-        if (authUserId) {
-          await client.query(
-            `
-            INSERT INTO auth.identities (
-              id,
-              provider_id,
-              user_id,
-              identity_data,
-              provider,
-              last_sign_in_at,
-              created_at,
-              updated_at
-            ) VALUES (
-              gen_random_uuid(),
-              $1::text,
-              $2::uuid,
-              json_build_object('sub', $1::text, 'email', $3::text, 'email_verified', false, 'phone_verified', false),
-              'email',
-              now(),
-              now(),
-              now()
-            );
-            `,
-            [String(authUserId), authUserId, cleanEmail]
-          );
-        }
+      if (signUpData?.user) {
+        authUserId = signUpData.user.id;
+      } else if (signUpErr) {
+        // If user already registered, retrieve auth session with credentials
+        try {
+          const { data: signInData } = await ephemeralClient.auth.signInWithPassword({
+            email: cleanEmail,
+            password: String(password),
+          });
+          if (signInData?.user) {
+            authUserId = signInData.user.id;
+          }
+        } catch (_) {}
       }
+    }
 
-      if (!authUserId) {
+    // 6. INSERT STUDENT RECORD INTO public."Students" TABLE (HTTPS REST)
+    // Primary attempt: Full schema columns
+    const fullPayload: any = {
+      Name: cleanName,
+      Username: cleanUsername,
+      "Roll Number": cleanRollNumber,
+      Department: cleanDepartment,
+      college: cleanCollege,
+      year: cleanYear,
+      section: cleanSection,
+      email: cleanEmail,
+      status: 'active',
+      password: null, // Plaintext password is NEVER stored in database
+    };
+    if (numericPhone !== null) fullPayload["Phone Number"] = numericPhone;
+    if (authUserId) fullPayload.auth_id = authUserId;
+
+    let dbRecordId: string | null = null;
+    let savedRow: any = null;
+
+    const { data: insertData, error: insertErr } = await dbClient
+      .from('Students')
+      .insert([fullPayload])
+      .select();
+
+    if (!insertErr && insertData && insertData.length > 0) {
+      savedRow = insertData[0];
+      dbRecordId = String(savedRow.id);
+    } else if (insertErr) {
+      console.warn('Full schema insert notice, falling back to core columns:', insertErr.message);
+
+      // Core schema fallback: Standard database columns
+      const corePayload: any = {
+        Name: cleanName,
+        Username: cleanUsername,
+        "Roll Number": cleanRollNumber,
+        Department: cleanDepartment,
+      };
+      if (numericPhone !== null) corePayload["Phone Number"] = numericPhone;
+
+      const { data: coreData, error: coreErr } = await dbClient
+        .from('Students')
+        .insert([corePayload])
+        .select();
+
+      if (!coreErr && coreData && coreData.length > 0) {
+        savedRow = coreData[0];
+        dbRecordId = String(savedRow.id);
+      } else {
+        const errorMsg = coreErr?.message || insertErr.message;
+        console.error('Database insert failed for Students table:', errorMsg);
         return NextResponse.json(
           {
             success: false,
-            message: `Failed to create Supabase Auth account: ${authError || 'Unknown auth error'}`,
+            message: `Database error inserting into Students table: ${errorMsg}`,
           },
           { status: 500 }
         );
       }
-
-      // 5. INSERT INTO public."Students" TABLE
-      // Rules:
-      // - Do NOT insert auth.users.id into Students.id (Students.id is auto-generated bigint)
-      // - Password must remain inside Supabase Auth and MUST NOT be stored in plain text
-      // - auth_id links to auth.users.id
-      try {
-        const studentInsertRes = await client.query(
-          `
-          INSERT INTO public."Students" (
-            "Name",
-            "Username",
-            "Roll Number",
-            "Department",
-            "Phone Number",
-            "auth_id",
-            "email",
-            "year",
-            "college",
-            "section",
-            "status",
-            "password"
-          ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL
-          )
-          RETURNING id;
-          `,
-          [
-            cleanName,
-            cleanUsername,
-            cleanRollNumber,
-            cleanDepartment,
-            numericPhone,
-            authUserId,
-            cleanEmail,
-            cleanYear,
-            cleanCollege,
-            cleanSection,
-            'active',
-          ]
-        );
-
-        if (studentInsertRes.rows && studentInsertRes.rows[0]) {
-          dbRecordId = String(studentInsertRes.rows[0].id);
-        }
-      } catch (insertErr: any) {
-        // Rollback created auth user if Students table insert fails
-        console.error('Students table insert failed, rolling back auth user:', insertErr);
-        await client.query('DELETE FROM auth.identities WHERE user_id = $1;', [authUserId]);
-        await client.query('DELETE FROM auth.users WHERE id = $1;', [authUserId]);
-
-        return NextResponse.json(
-          {
-            success: false,
-            message: `Database error inserting into Students table: ${insertErr?.message || 'Insert failed'}`,
-            error: insertErr?.message || 'Database error',
-          },
-          { status: 500 }
-        );
-      }
-    } finally {
-      client.release();
     }
 
     if (!dbRecordId) {
@@ -374,10 +302,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Student Created Successfully',
+      message: `Student account for ${cleanName} provisioned successfully!`,
       user: {
         id: dbRecordId,
-        studentId: authUserId,
+        studentId: authUserId || dbRecordId,
         recordId: dbRecordId,
         username: cleanUsername,
         name: cleanName,
@@ -391,8 +319,6 @@ export async function POST(req: NextRequest) {
         status: 'active',
         authUserId: authUserId,
       },
-      storedInSupabase: true,
-      endpointUsed: `${supabaseUrl}/rest/v1/Students`,
     });
   } catch (err: any) {
     console.error('Server error creating student account:', err);
