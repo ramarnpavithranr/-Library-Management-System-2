@@ -20,50 +20,53 @@ export async function POST(req: NextRequest) {
       : createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
     if (portal === 'student') {
-      // 1. If an email was directly provided
-      if (cleanId.includes('@')) {
-        const { data: studentEmailCheck } = await client
-          .from('Students')
-          .select('email, "Username", "Roll Number"')
-          .ilike('email', cleanId)
-          .limit(1);
+      // 1. Query via secure RPC function (works with strict RLS on Students table)
+      try {
+        const { data: rpcData, error: rpcErr } = await client.rpc('lookup_student_email', {
+          p_identifier: cleanId,
+        });
 
-        if (studentEmailCheck && studentEmailCheck.length > 0) {
-          const row = studentEmailCheck[0];
+        if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0 && rpcData[0]?.email) {
+          const row = rpcData[0];
           return NextResponse.json({
             success: true,
-            email: (row.email || cleanId).toLowerCase(),
-            username: row.Username,
-            rollNumber: row['Roll Number'],
+            email: row.email.toLowerCase(),
+            username: row.username,
+            rollNumber: row.roll_number,
           });
         }
+      } catch (_) {}
 
+      // 2. If an email was directly provided
+      if (cleanId.includes('@')) {
         return NextResponse.json({
           success: true,
           email: cleanId.toLowerCase(),
         });
       }
 
-      // 2. Query Students table for Username or Roll Number via HTTPS REST
-      const { data: studentRes } = await client
-        .from('Students')
-        .select('email, "Username", "Roll Number"')
-        .or(`Username.ilike.${cleanId},"Roll Number".ilike.${cleanId}`)
-        .limit(1);
+      // 3. Fallback: Query Students table directly if authorized
+      try {
+        const { data: studentRes } = await client
+          .from('Students')
+          .select('email, "Username", "Roll Number"')
+          .or(`Username.ilike.${cleanId},"Roll Number".ilike.${cleanId}`)
+          .limit(1);
 
-      if (studentRes && studentRes.length > 0) {
-        const row = studentRes[0];
-        const resolvedEmail =
-          row.email ||
-          `${String(row.Username || cleanId).toLowerCase()}@sreesakthi.edu.in`;
+        if (studentRes && studentRes.length > 0) {
+          const row = studentRes[0];
+          const resolvedEmail =
+            row.email ||
+            `${String(row.Username || cleanId).toLowerCase()}@sreesakthi.edu.in`;
 
-        return NextResponse.json({
-          success: true,
-          email: resolvedEmail.toLowerCase(),
-          username: row.Username,
-          rollNumber: row['Roll Number'],
-        });
-      }
+          return NextResponse.json({
+            success: true,
+            email: resolvedEmail.toLowerCase(),
+            username: row.Username,
+            rollNumber: row['Roll Number'],
+          });
+        }
+      } catch (_) {}
 
       // Default institutional email mapping fallback
       return NextResponse.json({

@@ -29,8 +29,16 @@ export default function StudentProfilePage() {
   const { user, logout } = useAuth();
   const { students, changeStudentPassword, memberships } = useLibrary();
 
-  const currentStudentId = user?.studentId || user?.id || '';
-  const currentStudent = students.find((s) => s.studentId === currentStudentId || s.id === user?.id);
+  const currentStudentId = user?.studentId || user?.id || user?.username || '';
+  const userRollNorm = (user?.rollNumber || '').replace(/\D/g, '');
+  const currentStudent = students.find(
+    (s) =>
+      s.studentId === currentStudentId ||
+      s.id === user?.id ||
+      (user?.username && s.username && s.username.toLowerCase() === user.username.toLowerCase()) ||
+      (user?.rollNumber && s.rollNumber && s.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
+      (userRollNorm && s.rollNumber && s.rollNumber.replace(/\D/g, '') === userRollNorm)
+  );
   const student: Student = currentStudent || {
     id: user?.id || 'stu-session',
     studentId: user?.studentId || 'STU-SESSION',
@@ -47,7 +55,24 @@ export default function StudentProfilePage() {
     profileImage: user?.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=400&auto=format&fit=crop',
     joinedDate: new Date().toISOString().split('T')[0],
   };
-  const membership = memberships.find((m) => m.studentId === currentStudentId);
+  const membership =
+    memberships.find(
+      (m) =>
+        m.status === 'approved' &&
+        (m.studentId === currentStudentId ||
+          m.studentId === user?.id ||
+          m.studentId === user?.username ||
+          (user?.rollNumber && m.rollNumber && m.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
+          (userRollNorm && m.rollNumber && m.rollNumber.replace(/\D/g, '') === userRollNorm))
+    ) ||
+    memberships.find(
+      (m) =>
+        m.studentId === currentStudentId ||
+        m.studentId === user?.id ||
+        m.studentId === user?.username ||
+        (user?.rollNumber && m.rollNumber && m.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
+        (userRollNorm && m.rollNumber && m.rollNumber.replace(/\D/g, '') === userRollNorm)
+    );
 
   // Change Password Form State
   const [currentPassword, setCurrentPassword] = useState('');

@@ -23,10 +23,17 @@ export default function StudentMyBooksPage() {
   const { borrowRecords } = useLibrary();
   const { user } = useAuth();
   const currentStudentId = user?.studentId || user?.id || '';
+  const userRollNorm = (user?.rollNumber || '').replace(/\D/g, '');
 
   // Active loans for this student
   const activeLoans = borrowRecords.filter(
-    (r) => r.studentId === currentStudentId && r.status !== 'returned'
+    (r) =>
+      r.status !== 'returned' &&
+      (r.studentId === currentStudentId ||
+        r.studentId === user?.id ||
+        r.studentId === user?.username ||
+        (user?.rollNumber && r.rollNumber && r.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
+        (userRollNorm && r.rollNumber && r.rollNumber.replace(/\D/g, '') === userRollNorm))
   );
 
   return (

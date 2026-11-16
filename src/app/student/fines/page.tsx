@@ -21,7 +21,15 @@ export default function StudentFinesPage() {
   const { fines } = useLibrary();
 
   const currentStudentId = user?.studentId || user?.id || '';
-  const myFines = fines.filter((f) => f.studentId === currentStudentId);
+  const userRollNorm = (user?.rollNumber || '').replace(/\D/g, '');
+  const myFines = fines.filter(
+    (f) =>
+      f.studentId === currentStudentId ||
+      f.studentId === user?.id ||
+      f.studentId === user?.username ||
+      (user?.rollNumber && f.rollNumber && f.rollNumber.trim().toUpperCase() === user.rollNumber.trim().toUpperCase()) ||
+      (userRollNorm && f.rollNumber && f.rollNumber.replace(/\D/g, '') === userRollNorm)
+  );
 
   const unpaidFines = myFines.filter((f) => f.status === 'unpaid');
   const paidFines = myFines.filter((f) => f.status === 'paid');
