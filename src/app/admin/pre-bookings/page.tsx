@@ -35,8 +35,11 @@ export default function AdminPreBookingsPage() {
 
   const [selectedRequest, setSelectedRequest] = useState<PreBookRequest | null>(null);
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [pickupDeadline, setPickupDeadline] = useState('');
   const [notes, setNotes] = useState('Reserved at Circulation Desk Counter 2.');
+  const [rejectReason, setRejectReason] = useState('All circulating copies checked out. Allocated to academic reserve.');
+  const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const filteredRequests = preBookings.filter((p) => {
     const matchesSearch =
@@ -53,6 +56,7 @@ export default function AdminPreBookingsPage() {
     const deadline = new Date();
     deadline.setDate(deadline.getDate() + 5);
     setPickupDeadline(deadline.toISOString().split('T')[0]);
+    setNotes('Reserved at Circulation Desk Counter 2.');
     setIsApproveModalOpen(true);
   };
 
@@ -60,16 +64,37 @@ export default function AdminPreBookingsPage() {
     if (!selectedRequest) return;
     updatePreBookStatus(selectedRequest.id, 'approved', pickupDeadline, notes);
     setIsApproveModalOpen(false);
+    setActionFeedback({
+      type: 'success',
+      message: `Reservation for "${selectedRequest.bookTitle}" by ${selectedRequest.studentName} approved successfully. Pickup hold set until ${pickupDeadline}.`,
+    });
+    setTimeout(() => setActionFeedback(null), 4000);
   };
 
-  const handleReject = (req: PreBookRequest) => {
-    if (confirm(`Reject reservation request for "${req.bookTitle}" by ${req.studentName}?`)) {
-      updatePreBookStatus(req.id, 'rejected', undefined, 'Copies allocated to academic course reserves.');
-    }
+  const handleOpenReject = (req: PreBookRequest) => {
+    setSelectedRequest(req);
+    setRejectReason('All circulating copies checked out. Allocated to academic reserve.');
+    setIsRejectModalOpen(true);
+  };
+
+  const handleConfirmReject = () => {
+    if (!selectedRequest) return;
+    updatePreBookStatus(selectedRequest.id, 'rejected', undefined, rejectReason.trim());
+    setIsRejectModalOpen(false);
+    setActionFeedback({
+      type: 'success',
+      message: `Reservation request for "${selectedRequest.bookTitle}" by ${selectedRequest.studentName} has been Rejected. Status updated across portals.`,
+    });
+    setTimeout(() => setActionFeedback(null), 4000);
   };
 
   const handleComplete = (req: PreBookRequest) => {
     updatePreBookStatus(req.id, 'completed', undefined, 'Book checked out to student.');
+    setActionFeedback({
+      type: 'success',
+      message: `Reservation for "${req.bookTitle}" marked as Fulfilled / Picked Up.`,
+    });
+    setTimeout(() => setActionFeedback(null), 4000);
   };
 
   const getStatusBadge = (status: PreBookRequest['status']) => {
@@ -81,7 +106,7 @@ export default function AdminPreBookingsPage() {
       case 'completed':
         return <Badge variant="neutral">Completed / Picked Up</Badge>;
       case 'rejected':
-        return <Badge variant="danger">Rejected</Badge>;
+        return <Badge variant="danger" dot>Rejected</Badge>;
       default:
         return <Badge variant="neutral">{status}</Badge>;
     }
@@ -95,6 +120,24 @@ export default function AdminPreBookingsPage() {
       />
 
       <main className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto w-full">
+        {/* Action Feedback Banner */}
+        {actionFeedback && (
+          <div
+            className={`p-4 rounded-2xl flex items-center gap-2.5 text-xs font-bold shadow-sm animate-in fade-in duration-200 ${
+              actionFeedback.type === 'success'
+                ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                : 'bg-rose-50 border border-rose-200 text-rose-800'
+            }`}
+          >
+            {actionFeedback.type === 'success' ? (
+              <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle size={16} className="text-rose-600 shrink-0" />
+            )}
+            <span>{actionFeedback.message}</span>
+          </div>
+        )}
+
         {/* Top Controls */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div className="flex-1 max-w-md">
@@ -168,6 +211,11 @@ export default function AdminPreBookingsPage() {
                         Pickup Deadline: <strong>{req.pickupDeadline}</strong> ({req.notes})
                       </p>
                     )}
+                    {req.status === 'rejected' && req.notes && (
+                      <p className="text-[11px] text-rose-700 font-medium mt-1">
+                        Rejection Reason: <strong>{req.notes}</strong>
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -183,10 +231,11 @@ export default function AdminPreBookingsPage() {
                         <span>Approve Hold</span>
                       </button>
                       <button
-                        onClick={() => handleReject(req)}
-                        className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold active:scale-95 transition-all"
+                        onClick={() => handleOpenReject(req)}
+                        className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold active:scale-95 transition-all flex items-center gap-1"
                       >
-                        Reject
+                        <XCircle size={14} />
+                        <span>Reject</span>
                       </button>
                     </>
                   )}
@@ -201,9 +250,15 @@ export default function AdminPreBookingsPage() {
                     </button>
                   )}
 
-                  {(req.status === 'completed' || req.status === 'rejected') && (
-                    <span className="text-xs font-semibold text-charcoal-400">
-                      Archive Record
+                  {req.status === 'rejected' && (
+                    <span className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-[11px] font-bold text-rose-700">
+                      Request Rejected
+                    </span>
+                  )}
+
+                  {req.status === 'completed' && (
+                    <span className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-700">
+                      Fulfilled & Archived
                     </span>
                   )}
                 </div>
@@ -261,6 +316,70 @@ export default function AdminPreBookingsPage() {
                 className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold shadow-sm"
               >
                 Confirm Approval & Hold
+              </button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* REJECT RESERVATION MODAL */}
+        <Modal
+          isOpen={isRejectModalOpen}
+          onClose={() => setIsRejectModalOpen(false)}
+          title="Reject Book Reservation"
+          subtitle={`Reject request for: ${selectedRequest?.studentName}`}
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-900">
+              Rejecting this request will mark the reservation as <strong>Rejected</strong> and update the student&apos;s status immediately.
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-charcoal-700 uppercase tracking-wider mb-1">
+                Select or Type Reason for Rejection
+              </label>
+              <div className="space-y-2 mb-2">
+                {[
+                  'All circulating copies checked out. Allocated to academic reserve.',
+                  'Book undergoing binding or physical preservation maintenance.',
+                  'Maximum student reservation quota reached for this semester.',
+                  'Reserved for reference section counter study only.',
+                ].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setRejectReason(preset)}
+                    className={`w-full text-left p-2.5 rounded-xl border text-xs font-medium transition-all ${
+                      rejectReason === preset
+                        ? 'bg-rose-50 border-rose-300 text-rose-900 font-bold'
+                        : 'bg-[#FAF7F7] border-burgundy-100 text-charcoal-700 hover:bg-white'
+                    }`}
+                  >
+                    • {preset}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Custom rejection reason..."
+                className="w-full text-xs font-medium p-3 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-rose-700/20"
+              />
+            </div>
+
+            <div className="pt-3 border-t border-burgundy-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsRejectModalOpen(false)}
+                className="px-4 py-2.5 rounded-2xl text-xs font-bold text-charcoal-600 hover:bg-charcoal-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmReject}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs font-bold shadow-sm"
+              >
+                Confirm Rejection
               </button>
             </div>
           </div>

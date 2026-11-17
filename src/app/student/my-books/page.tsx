@@ -39,8 +39,8 @@ export default function StudentMyBooksPage() {
   return (
     <div className="flex-1 flex flex-col">
       <StudentTopBar
-        title="Books"
-        subtitle="Active Loans, Due Dates & Circulation Guidelines"
+        title="Borrowed Books"
+        subtitle="Active Loans, Due Dates & Remaining Loan Days"
       />
 
       <main className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-5xl mx-auto w-full">
@@ -52,7 +52,7 @@ export default function StudentMyBooksPage() {
             </div>
             <div>
               <p className="text-xs font-bold text-charcoal-900">
-                Active Loan Allocation
+                Borrowed Books Allocation
               </p>
               <p className="text-[11px] text-charcoal-500">
                 You have {Math.max(0, ENV.MAX_BOOKS_PER_STUDENT - activeLoans.length)} remaining borrowing slots available on your student pass.
@@ -117,8 +117,8 @@ export default function StudentMyBooksPage() {
                         {loan.bookTitle}
                       </h4>
                       <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-charcoal-500">
-                        <span>Issued: <strong>{loan.issueDate}</strong></span>
-                        <span>Due: <strong className={isOverdue ? 'text-rose-600' : 'text-burgundy-900'}>{loan.dueDate}</strong></span>
+                        <span>Borrowed: <strong>{loan.issueDate}</strong></span>
+                        <span>Due Date: <strong className={isOverdue ? 'text-rose-600' : 'text-burgundy-900'}>{loan.dueDate}</strong></span>
                       </div>
 
                       {isOverdue && loan.fineAmount > 0 && (

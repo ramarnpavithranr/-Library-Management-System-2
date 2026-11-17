@@ -17,6 +17,7 @@ import {
   Layers,
   ArrowRight,
   ShieldCheck,
+  DoorOpen,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLibrary } from '@/context/LibraryContext';
@@ -116,6 +117,24 @@ export default function StudentDashboardPage() {
               </span>
             </div>
           </div>
+
+          {/* Library Entry / Exit Attendance Quick Action */}
+          <div
+            onClick={() => router.push('/student/attendance')}
+            className="cursor-pointer bg-white px-3.5 py-2 rounded-2xl border border-emerald-100 shadow-soft hover:shadow-soft-lg hover:border-emerald-300 transition-all flex items-center gap-2"
+          >
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm">
+              <DoorOpen size={16} />
+            </div>
+            <div className="text-left hidden sm:block">
+              <span className="text-[10px] text-emerald-700 font-bold uppercase block">
+                Gate Pass
+              </span>
+              <span className="text-xs font-bold text-charcoal-900">
+                Entry / Exit
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Search Bar with filter toggle (Reference Phone 2) */}
@@ -132,12 +151,12 @@ export default function StudentDashboardPage() {
         {/* Hero Stats Grid (Reference Phone 2) */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <StatCard
-            title="BOOKS"
+            title="Borrowed"
             value={myBorrows.length}
-            subtitle="active books"
+            subtitle="active loan books"
             icon={BookMarked}
             variant="burgundy"
-            trend={{ value: `${Math.max(0, ENV.MAX_BOOKS_PER_STUDENT - myBorrows.length)} quota left`, isPositive: true }}
+            trend={{ value: `${Math.max(0, ENV.MAX_BOOKS_PER_STUDENT - myBorrows.length)} remaining slots`, isPositive: true }}
             onClick={() => router.push('/student/my-books')}
           />
           <StatCard

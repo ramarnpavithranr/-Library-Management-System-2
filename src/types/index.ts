@@ -134,3 +134,17 @@ export interface UserSession {
   profileImage?: string;
 }
 
+export interface AttendanceRecord {
+  id: string;
+  studentId?: string;
+  studentName: string;
+  rollNumber: string;
+  entryTime: string;
+  exitTime?: string | null;
+  status: 'Inside' | 'Completed';
+  duration?: string;
+  department?: string;
+  method?: 'Roll Number' | 'Face Recognition';
+  createdAt?: string;
+}
+

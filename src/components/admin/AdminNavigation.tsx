@@ -18,6 +18,7 @@ import {
   Settings,
   LogOut,
   PlusCircle,
+  DoorOpen,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLibrary } from '@/context/LibraryContext';
@@ -43,6 +44,7 @@ export const AdminNavigation: React.FC = () => {
     { name: 'Books Catalog', href: '/admin/books', icon: BookOpen },
     { name: 'Categories', href: '/admin/categories', icon: FolderTree },
     { name: 'Student Records', href: '/admin/students', icon: Users },
+    { name: 'Library Attendance', href: '/admin/attendance', icon: DoorOpen },
     { name: 'Issue Book', href: '/admin/issue', icon: BookPlus },
     { name: 'Return Book', href: '/admin/return', icon: RotateCcw },
     { name: 'Pre-Bookings', href: '/admin/pre-bookings', icon: BookmarkCheck, badge: stats.pendingPreBooks },

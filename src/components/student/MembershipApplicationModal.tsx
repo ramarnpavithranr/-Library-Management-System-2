@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   CreditCard,
@@ -10,11 +10,14 @@ import {
   Mail,
   Phone,
   Image as ImageIcon,
+  Camera,
   CheckCircle,
   AlertCircle,
   Sparkles,
   ShieldCheck,
   BookOpen,
+  RotateCcw,
+  Upload,
 } from 'lucide-react';
 import { CollegeLogo } from '@/components/common/CollegeLogo';
 
@@ -83,9 +86,76 @@ export const MembershipApplicationModal: React.FC<MembershipApplicationModalProp
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [photo, setPhoto] = useState(SAMPLE_AVATARS[0]);
+  const [photoMode, setPhotoMode] = useState<'upload' | 'camera'>('upload');
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [purpose, setPurpose] = useState(PURPOSES[0]);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const startCamera = async () => {
+    setCameraError(null);
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraError('Camera access is not supported by this browser.');
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      setIsCameraActive(true);
+    } catch (err: any) {
+      console.warn('Camera access notice:', err);
+      setCameraError('Unable to access camera. Please check permissions or upload a photo.');
+      setIsCameraActive(false);
+    }
+  };
+
+  const capturePhotoFromCamera = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    const size = Math.min(video.videoWidth || 360, video.videoHeight || 360);
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const startX = (video.videoWidth - size) / 2;
+      const startY = (video.videoHeight - size) / 2;
+      ctx.drawImage(video, startX, startY, size, size, 0, 0, size, size);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      setPhoto(dataUrl);
+      stopCamera();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      stopCamera();
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (initialData) {
@@ -104,14 +174,44 @@ export const MembershipApplicationModal: React.FC<MembershipApplicationModalProp
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setError('Photo size must be less than 2MB');
+      if (!file.type.startsWith('image/')) {
+        setError('Please select a valid image file (PNG, JPG, JPEG, WebP)');
+        return;
+      }
+      if (file.size > 3 * 1024 * 1024) {
+        setError('Photo size must be less than 3MB');
         return;
       }
       const reader = new FileReader();
       reader.onloadend = () => {
         if (typeof reader.result === 'string') {
-          setPhoto(reader.result);
+          const raw = reader.result;
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const maxDim = 400;
+            let w = img.width;
+            let h = img.height;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, w, h);
+              setPhoto(canvas.toDataURL('image/jpeg', 0.88));
+            } else {
+              setPhoto(raw);
+            }
+          };
+          img.src = raw;
         }
       };
       reader.readAsDataURL(file);
@@ -190,9 +290,94 @@ export const MembershipApplicationModal: React.FC<MembershipApplicationModalProp
 
           {/* Photo Selection Preview */}
           <div className="bg-[#FAF7F7] p-4 rounded-2xl border border-burgundy-100/70 space-y-3">
-            <label className="block text-[11px] font-bold text-charcoal-700 uppercase tracking-wider">
-              Student ID Card Photo
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-[11px] font-bold text-charcoal-700 uppercase tracking-wider">
+                Student ID Card Photograph <span className="text-burgundy-700">*</span>
+              </label>
+              <span className="text-[10px] text-charcoal-500 font-medium">Required for Digital Pass & Library Entry</span>
+            </div>
+
+            {/* Options Tabs: Upload vs Camera */}
+            <div className="flex items-center gap-1.5 p-1 bg-white rounded-xl border border-burgundy-100 max-w-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera();
+                  setPhotoMode('upload');
+                }}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  photoMode === 'upload'
+                    ? 'bg-burgundy-800 text-white shadow-sm'
+                    : 'text-charcoal-600 hover:text-burgundy-900'
+                }`}
+              >
+                <Upload size={13} />
+                <span>Upload File</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPhotoMode('camera');
+                  startCamera();
+                }}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  photoMode === 'camera'
+                    ? 'bg-burgundy-800 text-white shadow-sm'
+                    : 'text-charcoal-600 hover:text-burgundy-900'
+                }`}
+              >
+                <Camera size={13} />
+                <span>Take Photo</span>
+              </button>
+            </div>
+
+            {/* Camera Viewfinder View */}
+            {photoMode === 'camera' && (
+              <div className="p-3 bg-white rounded-2xl border border-burgundy-100 space-y-3">
+                {cameraError ? (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">
+                    {cameraError}
+                  </div>
+                ) : (
+                  <div className="relative w-full max-w-[260px] aspect-square mx-auto rounded-2xl overflow-hidden bg-charcoal-900 border-2 border-burgundy-800 shadow-md">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover scale-x-[-1]"
+                    />
+                    <div className="absolute inset-0 border-2 border-dashed border-white/40 rounded-full m-6 pointer-events-none" />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={capturePhotoFromCamera}
+                    disabled={!isCameraActive}
+                    className="px-4 py-2 bg-burgundy-800 hover:bg-burgundy-900 text-white rounded-xl text-xs font-bold shadow-burgundy-glow flex items-center gap-1.5 disabled:opacity-50 transition-all active:scale-95"
+                  >
+                    <Camera size={14} />
+                    <span>Capture Photo</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopCamera();
+                      setPhotoMode('upload');
+                    }}
+                    className="px-3 py-2 bg-charcoal-100 hover:bg-charcoal-200 text-charcoal-700 rounded-xl text-xs font-bold transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Standard Preview & Upload Controls */}
             <div className="flex items-center gap-4">
               <div className="relative w-16 h-16 rounded-2xl overflow-hidden border-2 border-burgundy-800 shadow-sm shrink-0 bg-burgundy-50">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -221,7 +406,7 @@ export const MembershipApplicationModal: React.FC<MembershipApplicationModalProp
                     <span>Upload Custom</span>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/png, image/jpeg, image/jpg, image/webp"
                       onChange={handleFileUpload}
                       className="hidden"
                     />

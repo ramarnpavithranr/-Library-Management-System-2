@@ -29,6 +29,9 @@ export interface InstitutionSettings {
   collegeLogo: string;
   address: string;
   location: string;
+  libraryName?: string;
+  libraryEmail?: string;
+  libraryPhone?: string;
   fineRate: number;
   loanPeriod: number;
   maxBooks: number;
@@ -132,6 +135,9 @@ export const DEFAULT_SETTINGS: InstitutionSettings = {
   collegeLogo: '/college-logo.png',
   address: 'Bettathapuram, Karamadai, Coimbatore - 641104',
   location: 'Coimbatore',
+  libraryName: 'Central Smart Library',
+  libraryEmail: 'library@sreesakthi.edu.in',
+  libraryPhone: '+91 422 236 9900',
   fineRate: 5,
   loanPeriod: 14,
   maxBooks: 3,
@@ -1178,10 +1184,12 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
           id: `notif-${Date.now()}`,
           recipientType: 'student',
           studentId: req.studentId,
-          title: `Pre-Book Request ${status.toUpperCase()}`,
+          title: status === 'rejected' ? 'Pre-Book Request Rejected' : `Pre-Book Request ${status.toUpperCase()}`,
           message:
             status === 'approved'
               ? `Your reservation for "${req.bookTitle}" has been approved! Pick it up before ${pickupDeadline || '7 days'}.`
+              : status === 'rejected'
+              ? `Your reservation for "${req.bookTitle}" was rejected: ${notes || 'Copies currently unavailable or reserved.'}`
               : `Your reservation for "${req.bookTitle}" was marked as ${status}.`,
           timestamp: 'Just now',
           read: false,

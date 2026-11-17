@@ -324,17 +324,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Real Supabase Authentication: signInWithPassword
-      const { data, error } = await supabaseClient.auth.signInWithPassword({
+      let authResult = await supabaseClient.auth.signInWithPassword({
         email: authEmail,
         password: cleanPass,
       });
 
-      if (error) {
+      // Fallback: If initial authentication fails, test against candidate student emails
+      if (authResult.error) {
+        const candidates: string[] = [];
+
+        const defaultEmail = `${cleanUser.toLowerCase()}@sreesakthi.edu.in`;
+        if (defaultEmail.toLowerCase() !== authEmail.toLowerCase()) {
+          candidates.push(defaultEmail);
+        }
+
+        const matchedStudent = students.find(
+          (s) =>
+            s.rollNumber?.toLowerCase() === cleanUser.toLowerCase() ||
+            s.username?.toLowerCase() === cleanUser.toLowerCase() ||
+            s.name?.toLowerCase() === cleanUser.toLowerCase()
+        );
+        if (matchedStudent?.email && !candidates.includes(matchedStudent.email.toLowerCase())) {
+          candidates.push(matchedStudent.email.toLowerCase());
+        }
+
+        for (const candidate of candidates) {
+          const fallbackResult = await supabaseClient.auth.signInWithPassword({
+            email: candidate,
+            password: cleanPass,
+          });
+          if (!fallbackResult.error && fallbackResult.data?.user) {
+            authResult = fallbackResult;
+            break;
+          }
+        }
+      }
+
+      if (authResult.error) {
         return {
           success: false,
-          message: error.message || 'Invalid student credentials. Please check your username/roll number and password.',
+          message: authResult.error.message || 'Invalid student credentials. Please check your username/roll number and password.',
         };
       }
+
+      const data = authResult.data;
 
       if (!data?.user) {
         return { success: false, message: 'Authentication failed. No user record returned by Supabase.' };

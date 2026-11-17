@@ -58,7 +58,7 @@ export default function StudentPreBookingsPage() {
       case 'completed':
         return <Badge variant="neutral">Checked Out / Completed</Badge>;
       case 'rejected':
-        return <Badge variant="danger">Not Available</Badge>;
+        return <Badge variant="danger" dot>Rejected</Badge>;
       default:
         return <Badge variant="neutral">{status}</Badge>;
     }
@@ -131,6 +131,12 @@ export default function StudentPreBookingsPage() {
                       {isApproved && (
                         <div className="mt-2 p-2 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-900">
                           Hold Active! Collect before: <strong className="underline">{p.pickupDeadline || '5 days'}</strong>. ({p.notes})
+                        </div>
+                      )}
+
+                      {p.status === 'rejected' && (
+                        <div className="mt-2 p-2.5 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800">
+                          Reservation Rejected: <strong>{p.notes || 'Copies currently unavailable or reserved for course stacks.'}</strong>
                         </div>
                       )}
                     </div>

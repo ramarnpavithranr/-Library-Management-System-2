@@ -13,6 +13,9 @@ import {
   Check,
   Sparkles,
   RefreshCw,
+  Mail,
+  Phone,
+  AlertCircle,
 } from 'lucide-react';
 import { useLibrary } from '@/context/LibraryContext';
 import { AdminTopBar } from '@/components/admin/AdminTopBar';
@@ -26,6 +29,9 @@ export default function AdminSettingsPage() {
   const [collegeLogo, setCollegeLogo] = useState(settings?.collegeLogo || '/college-logo.png');
   const [address, setAddress] = useState(settings?.address || 'Bettathapuram, Karamadai, Coimbatore - 641104');
   const [location, setLocation] = useState(settings?.location || 'Coimbatore');
+  const [libraryName, setLibraryName] = useState(settings?.libraryName || 'Central Smart Library');
+  const [libraryEmail, setLibraryEmail] = useState(settings?.libraryEmail || 'library@sreesakthi.edu.in');
+  const [libraryPhone, setLibraryPhone] = useState(settings?.libraryPhone || '+91 422 236 9900');
 
   // Circulation & Fine Rules state
   const [fineRate, setFineRate] = useState(settings?.fineRate || ENV.FINE_PER_DAY);
@@ -35,15 +41,22 @@ export default function AdminSettingsPage() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Sync state whenever settings from context loads
+  // Prevents the background 4s polling from clobbering unsaved edits or newly chosen logos
+  const isDirtyRef = useRef(false);
+
+  // Sync state when settings from context loads, but only if user hasn't made unsaved modifications
   useEffect(() => {
-    if (settings) {
+    if (settings && !isDirtyRef.current) {
       if (settings.collegeName) setCollegeName(settings.collegeName);
       if (settings.collegeLogo) setCollegeLogo(settings.collegeLogo);
       if (settings.address) setAddress(settings.address);
       if (settings.location) setLocation(settings.location);
+      if (settings.libraryName) setLibraryName(settings.libraryName);
+      if (settings.libraryEmail) setLibraryEmail(settings.libraryEmail);
+      if (settings.libraryPhone) setLibraryPhone(settings.libraryPhone);
       if (settings.fineRate) setFineRate(settings.fineRate);
       if (settings.loanPeriod) setLoanPeriod(settings.loanPeriod);
       if (settings.maxBooks) setMaxBooks(settings.maxBooks);
@@ -51,57 +64,105 @@ export default function AdminSettingsPage() {
     }
   }, [settings]);
 
-  // Handle Logo Upload / Replace
+  // Handle Logo Upload / Replace with canvas compression to ensure valid, lightweight PNG
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file (PNG, JPG, SVG, WebP).');
+    setErrorMessage('');
+    if (!file.type.match(/^image\/(png|jpe?g|webp|svg\+xml)$/i)) {
+      setErrorMessage('Please select a valid image file (PNG, JPG, JPEG, or WebP).');
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('Image file is too large. Please select an image under 5MB.');
+      setErrorMessage('Image file is too large. Please select an image under 5MB.');
       return;
     }
 
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        setCollegeLogo(reader.result);
+        const rawData = reader.result;
+        // Resize and optimize image through HTML5 Canvas
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 360;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, w, h);
+            const compressed = canvas.toDataURL('image/png');
+            isDirtyRef.current = true;
+            setCollegeLogo(compressed);
+            setSavedMessage('New logo chosen! Click "Save Settings & Logo" to apply permanently.');
+          } else {
+            isDirtyRef.current = true;
+            setCollegeLogo(rawData);
+          }
+        };
+        img.onerror = () => {
+          setErrorMessage('Could not decode the selected image file. Please try another image.');
+        };
+        img.src = rawData;
       }
+    };
+    reader.onerror = () => {
+      setErrorMessage('Failed to read image file from disk.');
     };
     reader.readAsDataURL(file);
   };
 
   const handleResetLogo = () => {
+    isDirtyRef.current = true;
     setCollegeLogo('/college-logo.png');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    setSavedMessage('Logo reset to default. Click "Save Settings & Logo" to persist.');
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setSavedMessage('');
+    setErrorMessage('');
 
-    const success = await updateSettings({
+    const payload = {
       collegeName: collegeName.trim(),
       collegeLogo,
       address: address.trim(),
       location: location.trim(),
+      libraryName: libraryName.trim(),
+      libraryEmail: libraryEmail.trim(),
+      libraryPhone: libraryPhone.trim(),
       fineRate: Number(fineRate) || 5,
       loanPeriod: Number(loanPeriod) || 14,
       maxBooks: Number(maxBooks) || 3,
       holdDays: Number(holdDays) || 5,
-    });
+    };
+
+    const success = await updateSettings(payload);
 
     setIsSaving(false);
+    isDirtyRef.current = false;
+
     if (success) {
-      setSavedMessage('Institution profile and circulation settings saved successfully! Changes are reflected across the system.');
-      setTimeout(() => setSavedMessage(''), 4000);
+      setSavedMessage('Institution profile, logo, and circulation settings saved successfully! Changes are live across all portals.');
+      setTimeout(() => setSavedMessage(''), 5000);
     } else {
       setSavedMessage('Settings saved to local storage.');
       setTimeout(() => setSavedMessage(''), 4000);
@@ -120,6 +181,13 @@ export default function AdminSettingsPage() {
           <div className="p-4 rounded-3xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in shadow-sm">
             <Check size={16} className="text-emerald-600 shrink-0" />
             <span>{savedMessage}</span>
+          </div>
+        )}
+
+        {errorMessage && (
+          <div className="p-4 rounded-3xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2 animate-in fade-in shadow-sm">
+            <AlertCircle size={16} className="text-rose-600 shrink-0" />
+            <span>{errorMessage}</span>
           </div>
         )}
 
@@ -159,6 +227,9 @@ export default function AdminSettingsPage() {
                     src={collegeLogo || '/college-logo.png'}
                     alt="Current College Logo Preview"
                     className="w-full h-full object-contain rounded-full select-none"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/college-logo.png';
+                    }}
                   />
                 </div>
 
@@ -167,14 +238,14 @@ export default function AdminSettingsPage() {
                     Active Institutional Logo
                   </div>
                   <p className="text-[11px] text-charcoal-500 leading-relaxed">
-                    Upload or replace the college emblem. The updated logo is displayed in headers, navigation, membership cards, and reports.
+                    Upload or replace the college emblem (PNG, JPG, or JPEG). The updated logo is displayed in headers, navigation, membership cards, and reports.
                   </p>
 
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept="image/*"
+                      accept="image/png, image/jpeg, image/jpg, image/webp"
                       onChange={handleLogoUpload}
                       className="hidden"
                       id="college-logo-file-input"
@@ -212,7 +283,10 @@ export default function AdminSettingsPage() {
                 type="text"
                 required
                 value={collegeName}
-                onChange={(e) => setCollegeName(e.target.value)}
+                onChange={(e) => {
+                  isDirtyRef.current = true;
+                  setCollegeName(e.target.value);
+                }}
                 placeholder="e.g. Sree Sakthi Engineering College"
                 className="w-full text-xs font-semibold p-3.5 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 text-charcoal-900 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20 focus:border-burgundy-700 transition-all"
               />
@@ -233,7 +307,10 @@ export default function AdminSettingsPage() {
                     type="text"
                     required
                     value={address}
-                    onChange={(e) => setAddress(e.target.value)}
+                    onChange={(e) => {
+                      isDirtyRef.current = true;
+                      setAddress(e.target.value);
+                    }}
                     placeholder="e.g. Bettathapuram, Karamadai"
                     className="w-full text-xs font-medium pl-10 pr-4 py-3.5 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 text-charcoal-900 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20 focus:border-burgundy-700 transition-all"
                   />
@@ -251,12 +328,73 @@ export default function AdminSettingsPage() {
                     type="text"
                     required
                     value={location}
-                    onChange={(e) => setLocation(e.target.value)}
+                    onChange={(e) => {
+                      isDirtyRef.current = true;
+                      setLocation(e.target.value);
+                    }}
                     placeholder="e.g. Coimbatore"
                     className="w-full text-xs font-medium pl-10 pr-4 py-3.5 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 text-charcoal-900 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20 focus:border-burgundy-700 transition-all"
                   />
                 </div>
                 <p className="text-[10px] text-charcoal-400 mt-1">City or region displayed under institution title.</p>
+              </div>
+            </div>
+
+            {/* Library Name & Contact details */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-burgundy-50">
+              <div>
+                <label className="block text-xs font-bold text-charcoal-700 uppercase tracking-wider mb-1">
+                  Library Department Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={libraryName}
+                  onChange={(e) => {
+                    isDirtyRef.current = true;
+                    setLibraryName(e.target.value);
+                  }}
+                  placeholder="e.g. Central Smart Library"
+                  className="w-full text-xs font-medium p-3 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 text-charcoal-900 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-charcoal-700 uppercase tracking-wider mb-1">
+                  Library Official Email
+                </label>
+                <div className="relative flex items-center">
+                  <Mail size={15} className="absolute left-3 text-charcoal-400 pointer-events-none" />
+                  <input
+                    type="email"
+                    value={libraryEmail}
+                    onChange={(e) => {
+                      isDirtyRef.current = true;
+                      setLibraryEmail(e.target.value);
+                    }}
+                    placeholder="library@sreesakthi.edu.in"
+                    className="w-full text-xs font-medium pl-9 pr-3 py-3 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 text-charcoal-900 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-charcoal-700 uppercase tracking-wider mb-1">
+                  Library Helpdesk Phone
+                </label>
+                <div className="relative flex items-center">
+                  <Phone size={15} className="absolute left-3 text-charcoal-400 pointer-events-none" />
+                  <input
+                    type="tel"
+                    value={libraryPhone}
+                    onChange={(e) => {
+                      isDirtyRef.current = true;
+                      setLibraryPhone(e.target.value);
+                    }}
+                    placeholder="+91 422 236 9900"
+                    className="w-full text-xs font-medium pl-9 pr-3 py-3 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 text-charcoal-900 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -276,7 +414,10 @@ export default function AdminSettingsPage() {
                   type="number"
                   min="1"
                   value={fineRate}
-                  onChange={(e) => setFineRate(parseInt(e.target.value) || 1)}
+                  onChange={(e) => {
+                    isDirtyRef.current = true;
+                    setFineRate(parseInt(e.target.value) || 1);
+                  }}
                   className="w-full text-xs font-medium p-3 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20"
                 />
               </div>
@@ -289,7 +430,10 @@ export default function AdminSettingsPage() {
                   type="number"
                   min="1"
                   value={loanPeriod}
-                  onChange={(e) => setLoanPeriod(parseInt(e.target.value) || 14)}
+                  onChange={(e) => {
+                    isDirtyRef.current = true;
+                    setLoanPeriod(parseInt(e.target.value) || 14);
+                  }}
                   className="w-full text-xs font-medium p-3 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20"
                 />
               </div>
@@ -303,7 +447,10 @@ export default function AdminSettingsPage() {
                   min="1"
                   max="10"
                   value={maxBooks}
-                  onChange={(e) => setMaxBooks(parseInt(e.target.value) || 3)}
+                  onChange={(e) => {
+                    isDirtyRef.current = true;
+                    setMaxBooks(parseInt(e.target.value) || 3);
+                  }}
                   className="w-full text-xs font-medium p-3 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20"
                 />
               </div>
@@ -316,7 +463,10 @@ export default function AdminSettingsPage() {
                   type="number"
                   min="1"
                   value={holdDays}
-                  onChange={(e) => setHoldDays(parseInt(e.target.value) || 5)}
+                  onChange={(e) => {
+                    isDirtyRef.current = true;
+                    setHoldDays(parseInt(e.target.value) || 5);
+                  }}
                   className="w-full text-xs font-medium p-3 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20"
                 />
               </div>
@@ -331,12 +481,12 @@ export default function AdminSettingsPage() {
                 {isSaving ? (
                   <>
                     <RefreshCw size={15} className="animate-spin" />
-                    <span>Saving Settings...</span>
+                    <span>Saving Settings & Logo...</span>
                   </>
                 ) : (
                   <>
                     <Save size={15} />
-                    <span>Save All Settings</span>
+                    <span>Save Settings & Logo</span>
                   </>
                 )}
               </button>
