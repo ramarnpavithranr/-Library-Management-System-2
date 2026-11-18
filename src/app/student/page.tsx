@@ -3,25 +3,24 @@
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import StudentLoginPage from './login/page';
-import StudentDashboardPage from './dashboard/page';
 
 export default function StudentPage() {
   const router = useRouter();
-  const { user, isLoading } = useAuth();
+  const { user, isStudent, isLoading } = useAuth();
 
   useEffect(() => {
-    // If already authenticated as student, redirect directly to Student Dashboard
-    if (!isLoading && user && user.role === 'student') {
-      router.replace('/student/dashboard');
+    if (!isLoading) {
+      if (user && isStudent) {
+        router.replace('/student/dashboard');
+      } else {
+        router.replace('/student/login');
+      }
     }
-  }, [user, isLoading, router]);
+  }, [user, isStudent, isLoading, router]);
 
-  // If authenticated as student, display Student Dashboard
-  if (!isLoading && user && user.role === 'student') {
-    return <StudentDashboardPage />;
-  }
-
-  // Directly renders the Student Login Page
-  return <StudentLoginPage />;
+  return (
+    <div className="min-h-screen bg-[#F8F5F5] flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-amber-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 }

@@ -129,8 +129,8 @@ export default function RootHomePage() {
             {/* Direct Access Button */}
             <div className="pt-4 border-t border-burgundy-50">
               <button
-                onClick={() => router.push('/admin')}
-                className="w-full py-3.5 px-4 bg-gradient-to-r from-burgundy-950 via-burgundy-900 to-burgundy-800 hover:from-burgundy-900 hover:to-burgundy-950 text-white rounded-2xl text-xs font-bold transition-all shadow-burgundy-glow flex items-center justify-center gap-2 group-hover:gap-3 active:scale-95"
+                onClick={() => router.push(isAdmin ? '/admin/dashboard' : '/admin/login')}
+                className="w-full py-3.5 px-4 bg-gradient-to-r from-burgundy-950 via-burgundy-900 to-burgundy-800 hover:from-burgundy-900 hover:to-burgundy-950 text-white rounded-2xl text-xs font-bold transition-all shadow-burgundy-glow flex items-center justify-center gap-2 group-hover:gap-3 active:scale-95 cursor-pointer"
               >
                 <Lock size={15} />
                 <span>Enter Admin Portal</span>
@@ -201,8 +201,8 @@ export default function RootHomePage() {
             {/* Direct Access Button */}
             <div className="pt-4 border-t border-burgundy-50">
               <button
-                onClick={() => router.push('/student')}
-                className="w-full py-3.5 px-4 bg-gradient-to-r from-burgundy-800 via-rose-700 to-burgundy-900 hover:from-burgundy-900 hover:to-burgundy-800 text-white rounded-2xl text-xs font-bold transition-all shadow-burgundy-glow flex items-center justify-center gap-2 group-hover:gap-3 active:scale-95"
+                onClick={() => router.push(user && user.role === 'student' ? '/student/dashboard' : '/student/login')}
+                className="w-full py-3.5 px-4 bg-gradient-to-r from-burgundy-800 via-rose-700 to-burgundy-900 hover:from-burgundy-900 hover:to-burgundy-800 text-white rounded-2xl text-xs font-bold transition-all shadow-burgundy-glow flex items-center justify-center gap-2 group-hover:gap-3 active:scale-95 cursor-pointer"
               >
                 <BookOpen size={15} />
                 <span>Enter Student Portal</span>

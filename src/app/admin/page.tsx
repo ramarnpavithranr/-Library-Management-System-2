@@ -3,25 +3,24 @@
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import AdminLoginPage from './login/page';
-import AdminDashboardPage from './dashboard/page';
 
 export default function AdminPage() {
   const router = useRouter();
   const { user, isAdmin, isLoading } = useAuth();
 
   useEffect(() => {
-    // If already authenticated as admin, redirect directly to Admin Dashboard
-    if (!isLoading && user && isAdmin) {
-      router.replace('/admin/dashboard');
+    if (!isLoading) {
+      if (user && isAdmin) {
+        router.replace('/admin/dashboard');
+      } else {
+        router.replace('/admin/login');
+      }
     }
   }, [user, isAdmin, isLoading, router]);
 
-  // If authenticated as admin, display Admin Dashboard
-  if (!isLoading && user && isAdmin) {
-    return <AdminDashboardPage />;
-  }
-
-  // Directly renders the Admin Login Page
-  return <AdminLoginPage />;
+  return (
+    <div className="min-h-screen bg-[#F8F5F5] flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-burgundy-800 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 }

@@ -60,7 +60,7 @@ export const AdminNavigation: React.FC = () => {
 
   const handleLogout = () => {
     logout();
-    router.push('/admin');
+    router.push('/admin/login');
   };
 
   // Mobile Bottom Navigation Bar Items (matching Proton Vault design)

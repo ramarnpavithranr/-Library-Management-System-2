@@ -64,7 +64,7 @@ export const StudentNavigation: React.FC = () => {
 
   const handleLogout = () => {
     logout();
-    router.push('/student');
+    router.push('/student/login');
   };
 
   // Quick Action Menu Items (Opened by the small center icon)

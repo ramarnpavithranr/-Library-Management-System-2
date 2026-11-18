@@ -33,10 +33,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (u) {
       try {
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(u));
+        if (typeof document !== 'undefined') {
+          document.cookie = `ssec_user_role=${u.role}; path=/; max-age=604800; SameSite=Lax`;
+        }
       } catch (_) {}
     } else {
       try {
         localStorage.removeItem(AUTH_STORAGE_KEY);
+        if (typeof document !== 'undefined') {
+          document.cookie = `ssec_user_role=; path=/; max-age=0; SameSite=Lax`;
+        }
       } catch (_) {}
     }
   };
