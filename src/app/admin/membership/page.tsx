@@ -11,6 +11,8 @@ import {
   User,
   Calendar,
   AlertCircle,
+  History,
+  Users,
 } from 'lucide-react';
 import { useLibrary } from '@/context/LibraryContext';
 import { AdminTopBar } from '@/components/admin/AdminTopBar';
@@ -43,6 +45,23 @@ export default function AdminMembershipPage() {
 
     const matchesTab = activeTab === 'all' || m.status === activeTab;
     return matchesSearch && matchesTab;
+  });
+
+  const [membershipHistorySearch, setMembershipHistorySearch] = useState('');
+
+  const totalMembershipsCount = memberships.length;
+  const activeMembershipsCount = memberships.filter((m) => m.status === 'approved').length;
+  const pendingMembershipsCount = memberships.filter((m) => m.status === 'pending').length;
+
+  const filteredHistoryMemberships = memberships.filter((m) => {
+    const q = membershipHistorySearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      m.studentName.toLowerCase().includes(q) ||
+      m.rollNumber.toLowerCase().includes(q) ||
+      m.membershipId.toLowerCase().includes(q) ||
+      m.department.toLowerCase().includes(q)
+    );
   });
 
   const handleApprove = (id: string, name: string) => {
@@ -230,6 +249,140 @@ export default function AdminMembershipPage() {
             })}
           </div>
         )}
+
+        {/* ========================================================================= */}
+        {/* MEMBERSHIP REGISTRY & HISTORY SECTION (SUPABASE MEMBERSHIP TABLE DATA)    */}
+        {/* ========================================================================= */}
+        <section className="bg-white rounded-3xl p-5 sm:p-6 border border-burgundy-100 shadow-soft space-y-4">
+          {/* Header & KPI Summary */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-burgundy-50">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-burgundy-800 text-white flex items-center justify-center shadow-sm shrink-0">
+                <ShieldCheck size={16} />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-extrabold text-charcoal-900">
+                    Membership Details & History
+                  </h3>
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-burgundy-50 text-burgundy-900 border border-burgundy-100">
+                    Total: {totalMembershipsCount}
+                  </span>
+                </div>
+                <p className="text-xs text-charcoal-500">
+                  Live membership directory populated directly from the Supabase <code className="font-mono text-burgundy-900 font-bold">membership</code> table
+                </p>
+              </div>
+            </div>
+
+            {/* KPI Badges */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-900 font-medium">
+                <CheckCircle size={14} className="text-emerald-700" />
+                <span>Active Cards: <strong className="font-bold">{activeMembershipsCount}</strong></span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 font-medium">
+                <CreditCard size={14} className="text-amber-700" />
+                <span>Pending Approvals: <strong className="font-bold">{pendingMembershipsCount}</strong></span>
+              </div>
+            </div>
+          </div>
+
+          {/* Search inside Membership History */}
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <div className="relative flex-1 max-w-md">
+              <Search size={15} className="absolute left-3.5 top-3 text-charcoal-400" />
+              <input
+                type="text"
+                value={membershipHistorySearch}
+                onChange={(e) => setMembershipHistorySearch(e.target.value)}
+                placeholder="Search memberships by student name, roll no, card ID..."
+                className="w-full text-xs pl-9 pr-4 py-2 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20 text-charcoal-900"
+              />
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="overflow-x-auto rounded-2xl border border-burgundy-100">
+            <table className="w-full text-left text-xs text-charcoal-700">
+              <thead className="bg-[#FAF7F7] border-b border-burgundy-100 text-[11px] font-extrabold uppercase tracking-wider text-charcoal-600">
+                <tr>
+                  <th className="py-3 px-4">Student Name</th>
+                  <th className="py-3 px-3">Student ID</th>
+                  <th className="py-3 px-3">Membership ID</th>
+                  <th className="py-3 px-4">Type</th>
+                  <th className="py-3 px-3">Start Date</th>
+                  <th className="py-3 px-3">End Date</th>
+                  <th className="py-3 px-3 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-burgundy-50">
+                {filteredHistoryMemberships.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-10 text-center text-charcoal-400">
+                      No membership records match your search query.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredHistoryMemberships.map((m) => {
+                    const isApproved = m.status === 'approved';
+                    const isPending = m.status === 'pending';
+
+                    return (
+                      <tr key={m.id} className="hover:bg-burgundy-50/40 transition-colors">
+                        {/* Student Name */}
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-charcoal-900 flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-burgundy-100 text-burgundy-900 text-[10px] font-bold flex items-center justify-center shrink-0">
+                              {m.studentName ? m.studentName[0] : 'S'}
+                            </span>
+                            <span className="truncate max-w-[150px]">{m.studentName}</span>
+                          </div>
+                        </td>
+
+                        {/* Student ID */}
+                        <td className="py-3 px-3 font-mono font-medium text-charcoal-700">
+                          {m.rollNumber || m.studentId}
+                        </td>
+
+                        {/* Membership ID */}
+                        <td className="py-3 px-3 font-mono font-bold text-burgundy-900">
+                          {m.membershipId}
+                        </td>
+
+                        {/* Type */}
+                        <td className="py-3 px-4 text-charcoal-600">
+                          {m.year || 'Standard Student'} • {m.department ? m.department.split(' ')[0] : 'Engineering'}
+                        </td>
+
+                        {/* Start Date */}
+                        <td className="py-3 px-3 whitespace-nowrap text-charcoal-600">
+                          {m.issuedDate || m.appliedDate || 'N/A'}
+                        </td>
+
+                        {/* End Date */}
+                        <td className="py-3 px-3 whitespace-nowrap text-charcoal-600">
+                          {m.expiryDate || (isApproved ? '2-Year Term' : 'Pending Issuance')}
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                          {isApproved ? (
+                            <Badge variant="success" size="sm" dot>Active Pass</Badge>
+                          ) : isPending ? (
+                            <Badge variant="warning" size="sm" dot>Pending Approval</Badge>
+                          ) : (
+                            <Badge variant="danger" size="sm" dot>Rejected</Badge>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         {/* MODAL: PREVIEW DIGITAL PASS */}
         {previewCard && (

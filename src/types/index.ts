@@ -78,6 +78,20 @@ export interface BorrowRecord {
   remarks?: string;
 }
 
+export interface BookIssue {
+  id?: string;
+  studentName: string;
+  bookId: string;
+  fromDate: string;
+  dueDate: string;
+  loanRemarks?: string;
+  status?: string;
+  studentId?: string;
+  rollNumber?: string;
+  bookTitle?: string;
+  createdAt?: string;
+}
+
 export interface PreBookRequest {
   id: string;
   studentId: string;

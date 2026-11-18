@@ -11,6 +11,9 @@ import {
   Calendar,
   AlertCircle,
   Sparkles,
+  History,
+  BookOpen,
+  Users,
 } from 'lucide-react';
 import { useLibrary } from '@/context/LibraryContext';
 import { AdminTopBar } from '@/components/admin/AdminTopBar';
@@ -49,6 +52,25 @@ export default function AdminPreBookingsPage() {
 
     const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
     return matchesSearch && matchesStatus;
+  });
+
+  const [historySearch, setHistorySearch] = useState('');
+
+  const totalPreBookings = preBookings.length;
+  const totalApproved = preBookings.filter((p) => p.status === 'approved' || p.status === 'completed').length;
+  const totalRejected = preBookings.filter((p) => p.status === 'rejected').length;
+  const totalPending = preBookings.filter((p) => p.status === 'pending').length;
+
+  const filteredHistoryPreBookings = preBookings.filter((p) => {
+    const q = historySearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      p.studentName.toLowerCase().includes(q) ||
+      p.rollNumber.toLowerCase().includes(q) ||
+      p.studentId.toLowerCase().includes(q) ||
+      p.bookTitle.toLowerCase().includes(q) ||
+      p.bookId.toLowerCase().includes(q)
+    );
   });
 
   const handleOpenApprove = (req: PreBookRequest) => {
@@ -266,6 +288,151 @@ export default function AdminPreBookingsPage() {
             ))}
           </div>
         )}
+
+        {/* ========================================================================= */}
+        {/* PRE-BOOKING HISTORY SECTION (DYNAMIC DATABASE RESERVATIONS LOG)           */}
+        {/* ========================================================================= */}
+        <section className="bg-white rounded-3xl p-5 sm:p-6 border border-burgundy-100 shadow-soft space-y-4">
+          {/* Header & KPI Summary */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-burgundy-50">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-burgundy-800 text-white flex items-center justify-center shadow-sm shrink-0">
+                <BookmarkCheck size={16} />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-extrabold text-charcoal-900">
+                    Pre-Booking History
+                  </h3>
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-burgundy-50 text-burgundy-900 border border-burgundy-100">
+                    Total Pre-Bookings: {totalPreBookings}
+                  </span>
+                </div>
+                <p className="text-xs text-charcoal-500">
+                  Full reservation registry retaining all student pre-booking records and approval histories
+                </p>
+              </div>
+            </div>
+
+            {/* Totals Badges: Total, Total Approved, Total Rejected */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF7F7] border border-burgundy-100 rounded-2xl text-charcoal-700 font-medium">
+                <BookmarkCheck size={14} className="text-burgundy-800" />
+                <span>Total: <strong className="text-burgundy-950 font-bold">{totalPreBookings}</strong></span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-900 font-medium">
+                <CheckCircle size={14} className="text-emerald-700" />
+                <span>Approved: <strong className="font-bold">{totalApproved}</strong></span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 font-medium">
+                <XCircle size={14} className="text-rose-700" />
+                <span>Rejected: <strong className="font-bold">{totalRejected}</strong></span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 font-medium">
+                <Clock size={14} className="text-amber-700" />
+                <span>Pending: <strong className="font-bold">{totalPending}</strong></span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Search inside Pre-Booking History */}
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <div className="relative flex-1 max-w-md">
+              <Search size={15} className="absolute left-3.5 top-3 text-charcoal-400" />
+              <input
+                type="text"
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+                placeholder="Search history by student name, roll no, book title, ID..."
+                className="w-full text-xs pl-9 pr-4 py-2 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20 text-charcoal-900"
+              />
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="overflow-x-auto rounded-2xl border border-burgundy-100">
+            <table className="w-full text-left text-xs text-charcoal-700">
+              <thead className="bg-[#FAF7F7] border-b border-burgundy-100 text-[11px] font-extrabold uppercase tracking-wider text-charcoal-600">
+                <tr>
+                  <th className="py-3 px-4">Student Name</th>
+                  <th className="py-3 px-3">Student ID</th>
+                  <th className="py-3 px-4">Book Name</th>
+                  <th className="py-3 px-3">Book ID</th>
+                  <th className="py-3 px-3">Pre-Booking Date</th>
+                  <th className="py-3 px-3 text-center">Status</th>
+                  <th className="py-3 px-4">Approval Date / Deadline</th>
+                  <th className="py-3 px-4">Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-burgundy-50">
+                {filteredHistoryPreBookings.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-10 text-center text-charcoal-400">
+                      No pre-booking records match the search filter.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredHistoryPreBookings.map((req) => (
+                    <tr key={req.id} className="hover:bg-burgundy-50/40 transition-colors">
+                      {/* Student Name */}
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-charcoal-900 flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-full bg-burgundy-100 text-burgundy-900 text-[10px] font-bold flex items-center justify-center shrink-0">
+                            {req.studentName ? req.studentName[0] : 'S'}
+                          </span>
+                          <span className="truncate max-w-[150px]">{req.studentName}</span>
+                        </div>
+                      </td>
+
+                      {/* Student ID */}
+                      <td className="py-3 px-3 font-mono font-medium text-charcoal-700">
+                        {req.rollNumber || req.studentId}
+                      </td>
+
+                      {/* Book Name */}
+                      <td className="py-3 px-4">
+                        <span className="font-semibold text-charcoal-900 block max-w-[220px] truncate" title={req.bookTitle}>
+                          {req.bookTitle}
+                        </span>
+                      </td>
+
+                      {/* Book ID */}
+                      <td className="py-3 px-3 font-mono font-bold text-burgundy-900">
+                        #{req.bookId}
+                      </td>
+
+                      {/* Pre-Booking Date */}
+                      <td className="py-3 px-3 whitespace-nowrap text-charcoal-600">
+                        {req.requestDate}
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        {getStatusBadge(req.status)}
+                      </td>
+
+                      {/* Approval Date / Hold Deadline */}
+                      <td className="py-3 px-4 whitespace-nowrap text-charcoal-700">
+                        {req.pickupDeadline ? (
+                          <span className="font-semibold text-emerald-800">Hold: {req.pickupDeadline}</span>
+                        ) : req.status === 'rejected' ? (
+                          <span className="text-rose-600">Rejected</span>
+                        ) : (
+                          <span className="text-charcoal-400">Pending Review</span>
+                        )}
+                      </td>
+
+                      {/* Notes / Remarks */}
+                      <td className="py-3 px-4 text-charcoal-500 max-w-[200px] truncate" title={req.notes}>
+                        {req.notes || 'Standard Reservation'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         {/* APPROVE RESERVATION MODAL */}
         <Modal

@@ -17,7 +17,6 @@ import {
   Layers,
   ArrowRight,
   ShieldCheck,
-  DoorOpen,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLibrary } from '@/context/LibraryContext';
@@ -27,6 +26,7 @@ import { Badge } from '@/components/common/Badge';
 import { SearchInput } from '@/components/common/SearchInput';
 import { DigitalMembershipCard } from '@/components/student/DigitalMembershipCard';
 import { ENV } from '@/config/env';
+import type { BorrowRecord, PreBookRequest, MembershipCard, FineRecord, Category } from '@/types';
 
 export default function StudentDashboardPage() {
   const router = useRouter();
@@ -41,14 +41,14 @@ export default function StudentDashboardPage() {
   const currentStudentName = user?.name || 'Student';
 
   // Student specific data
-  const myBorrows = borrowRecords.filter((r) => r.studentId === currentStudentId && r.status === 'borrowed');
-  const myOverdue = borrowRecords.filter((r) => r.studentId === currentStudentId && r.status === 'overdue');
-  const myPreBooks = preBookings.filter((p) => p.studentId === currentStudentId);
+  const myBorrows = borrowRecords.filter((r: BorrowRecord) => r.studentId === currentStudentId && r.status === 'borrowed');
+  const myOverdue = borrowRecords.filter((r: BorrowRecord) => r.studentId === currentStudentId && r.status === 'overdue');
+  const myPreBooks = preBookings.filter((p: PreBookRequest) => p.studentId === currentStudentId);
 
   const userRollNorm = (user?.rollNumber || '').replace(/\D/g, '');
   const myMembership =
     memberships.find(
-      (m) =>
+      (m: MembershipCard) =>
         m.status === 'approved' &&
         (m.studentId === currentStudentId ||
           m.studentId === user?.id ||
@@ -60,7 +60,7 @@ export default function StudentDashboardPage() {
           (user?.name && m.studentName && m.studentName.trim().toLowerCase() === user.name.trim().toLowerCase()))
     ) ||
     memberships.find(
-      (m) =>
+      (m: MembershipCard) =>
         m.studentId === currentStudentId ||
         m.studentId === user?.id ||
         m.studentId === user?.username ||
@@ -71,8 +71,8 @@ export default function StudentDashboardPage() {
         (user?.name && m.studentName && m.studentName.trim().toLowerCase() === user.name.trim().toLowerCase())
     );
 
-  const myFines = fines.filter((f) => f.studentId === currentStudentId && f.status === 'unpaid');
-  const totalMyFine = myFines.reduce((sum, f) => sum + f.amount, 0);
+  const myFines = fines.filter((f: FineRecord) => f.studentId === currentStudentId && f.status === 'unpaid');
+  const totalMyFine = myFines.reduce((sum: number, f: FineRecord) => sum + f.amount, 0);
 
   return (
     <div className="flex-1 flex flex-col">
@@ -114,24 +114,6 @@ export default function StudentDashboardPage() {
                   : myMembership?.status === 'pending'
                   ? 'Pass Pending'
                   : 'Apply Pass'}
-              </span>
-            </div>
-          </div>
-
-          {/* Library Entry / Exit Attendance Quick Action */}
-          <div
-            onClick={() => router.push('/student/attendance')}
-            className="cursor-pointer bg-white px-3.5 py-2 rounded-2xl border border-emerald-100 shadow-soft hover:shadow-soft-lg hover:border-emerald-300 transition-all flex items-center gap-2"
-          >
-            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm">
-              <DoorOpen size={16} />
-            </div>
-            <div className="text-left hidden sm:block">
-              <span className="text-[10px] text-emerald-700 font-bold uppercase block">
-                Gate Pass
-              </span>
-              <span className="text-xs font-bold text-charcoal-900">
-                Entry / Exit
               </span>
             </div>
           </div>
@@ -179,7 +161,7 @@ export default function StudentDashboardPage() {
           />
           <StatCard
             title="PRE BOOK"
-            value={myPreBooks.filter((p) => p.status === 'pending' || p.status === 'approved').length}
+            value={myPreBooks.filter((p: PreBookRequest) => p.status === 'pending' || p.status === 'approved').length}
             subtitle="held or queued"
             icon={BookmarkCheck}
             variant="white"
@@ -203,7 +185,7 @@ export default function StudentDashboardPage() {
           </div>
 
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-            {categories.slice(0, 6).map((cat) => (
+            {categories.slice(0, 6).map((cat: Category) => (
               <button
                 key={cat.id}
                 onClick={() => router.push(`/student/books?category=${encodeURIComponent(cat.name)}`)}
@@ -244,7 +226,7 @@ export default function StudentDashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {myBorrows.map((r) => (
+                  {myBorrows.map((r: BorrowRecord) => (
                     <div
                       key={r.id}
                       className="p-3.5 rounded-2xl bg-[#FAF7F7] border border-burgundy-50 flex items-center justify-between gap-3 hover:bg-burgundy-50/40 transition-colors"
@@ -296,7 +278,7 @@ export default function StudentDashboardPage() {
                 </div>
 
                 <div className="space-y-2.5">
-                  {myPreBooks.slice(0, 2).map((p) => (
+                  {myPreBooks.slice(0, 2).map((p: PreBookRequest) => (
                     <div
                       key={p.id}
                       className="p-3 rounded-2xl bg-[#FAF7F7] border border-burgundy-50 flex items-center justify-between text-xs"

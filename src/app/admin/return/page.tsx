@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   RotateCcw,
   CheckCircle2,
@@ -10,6 +10,11 @@ import {
   Receipt,
   Clock,
   Sparkles,
+  History,
+  User,
+  Hash,
+  BookOpen,
+  CheckCircle,
 } from 'lucide-react';
 import { useLibrary } from '@/context/LibraryContext';
 import { AdminTopBar } from '@/components/admin/AdminTopBar';
@@ -18,10 +23,17 @@ import confetti from 'canvas-confetti';
 import { ENV } from '@/config/env';
 
 export default function AdminReturnBookPage() {
-  const { borrowRecords, returnBook } = useLibrary();
+  const { borrowRecords, returnBook, refreshBookIssues, books } = useLibrary();
+
+  useEffect(() => {
+    refreshBookIssues();
+  }, []);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [returnHistorySearch, setReturnHistorySearch] = useState('');
   const [selectedRecordId, setSelectedRecordId] = useState('');
+  const [studentInput, setStudentInput] = useState('');
+  const [bookIdInput, setBookIdInput] = useState('');
   const [returnDate, setReturnDate] = useState(new Date().toISOString().split('T')[0]);
   const [resultModal, setResultModal] = useState<{
     show: boolean;
@@ -31,16 +43,38 @@ export default function AdminReturnBookPage() {
     fineAmount: number;
   } | null>(null);
 
-  // Filter only currently unreturned records (borrowed, overdue, not_returned)
+  // Filter only currently unreturned records (borrowed, overdue)
   const activeRecords = borrowRecords.filter(
     (r) =>
       r.status !== 'returned' &&
+      !r.returnDate &&
       (r.bookTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
         r.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.rollNumber.toLowerCase().includes(searchQuery.toLowerCase()))
+        r.rollNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.bookId.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const selectedRecord = borrowRecords.find((r) => r.id === selectedRecordId);
+  // Match selected loan either by explicit click or by entered Student Name/ID and Book ID
+  const selectedRecord =
+    borrowRecords.find((r) => r.id === selectedRecordId) ||
+    borrowRecords.find(
+      (r) =>
+        r.status !== 'returned' &&
+        !r.returnDate &&
+        (studentInput.trim() &&
+          (r.studentName.toLowerCase() === studentInput.trim().toLowerCase() ||
+            r.rollNumber.toLowerCase() === studentInput.trim().toLowerCase() ||
+            r.studentId.toLowerCase() === studentInput.trim().toLowerCase())) &&
+        (bookIdInput.trim() &&
+          (r.bookId === bookIdInput.trim() ||
+            r.bookTitle.toLowerCase().includes(bookIdInput.trim().toLowerCase())))
+    );
+
+  const handleSelectLoan = (r: (typeof borrowRecords)[0]) => {
+    setSelectedRecordId(r.id);
+    setStudentInput(r.studentName);
+    setBookIdInput(r.bookId);
+  };
 
   // Live Overdue calculation based on selected return date
   let calculatedOverdueDays = 0;
@@ -53,6 +87,25 @@ export default function AdminReturnBookPage() {
     calculatedOverdueDays = diffDays > 0 ? diffDays : 0;
     calculatedFine = calculatedOverdueDays * ENV.FINE_PER_DAY;
   }
+
+  // All returned records from database & memory
+  const returnedRecords = borrowRecords.filter(
+    (r) => r.status === 'returned' || !!r.returnDate
+  );
+  const totalReturnedCount = returnedRecords.length;
+
+  // Filtered returned records for history display
+  const filteredReturnHistory = returnedRecords.filter((r) => {
+    const q = returnHistorySearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      r.studentName.toLowerCase().includes(q) ||
+      r.bookTitle.toLowerCase().includes(q) ||
+      r.rollNumber.toLowerCase().includes(q) ||
+      r.bookId.toLowerCase().includes(q) ||
+      (r.returnDate && r.returnDate.includes(q))
+    );
+  });
 
   const handleReturnSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +131,8 @@ export default function AdminReturnBookPage() {
       });
 
       setSelectedRecordId('');
+      setStudentInput('');
+      setBookIdInput('');
     }
   };
 
@@ -174,7 +229,7 @@ export default function AdminReturnBookPage() {
                   return (
                     <div
                       key={r.id}
-                      onClick={() => setSelectedRecordId(r.id)}
+                      onClick={() => handleSelectLoan(r)}
                       className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
                         isSelected
                           ? 'bg-burgundy-50 border-burgundy-700 shadow-sm'
@@ -227,26 +282,61 @@ export default function AdminReturnBookPage() {
                 </h3>
               </div>
 
+              {/* Input fields for Student Name/ID & Book ID */}
+              <div className="space-y-3 mb-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-charcoal-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                    <User size={13} className="text-burgundy-800" />
+                    <span>Student Name / ID</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={studentInput}
+                    onChange={(e) => setStudentInput(e.target.value)}
+                    placeholder="e.g. Priya Sharma or Roll Number"
+                    className="w-full text-xs font-medium p-2.5 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20 text-charcoal-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-charcoal-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                    <Hash size={13} className="text-burgundy-800" />
+                    <span>Book ID / Title</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={bookIdInput}
+                    onChange={(e) => setBookIdInput(e.target.value)}
+                    placeholder="e.g. 1, 2 or Title"
+                    className="w-full text-xs font-medium p-2.5 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20 text-charcoal-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-charcoal-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                    <Calendar size={13} className="text-burgundy-800" />
+                    <span>Actual Return Date *</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={returnDate}
+                    onChange={(e) => setReturnDate(e.target.value)}
+                    className="w-full text-xs font-medium p-2.5 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20 text-charcoal-900"
+                  />
+                </div>
+              </div>
+
               {selectedRecord ? (
                 <div className="space-y-4">
-                  <div className="p-3 bg-[#FAF7F7] rounded-2xl border border-burgundy-50 text-xs space-y-1.5">
-                    <p className="text-charcoal-500">Selected Title:</p>
+                  <div className="p-3 bg-[#FAF7F7] rounded-2xl border border-burgundy-50 text-xs space-y-1">
+                    <p className="text-charcoal-500 text-[11px]">Selected Outstanding Loan:</p>
                     <p className="font-bold text-charcoal-900 text-sm leading-tight">{selectedRecord.bookTitle}</p>
                     <p className="text-charcoal-600 text-[11px]">
-                      Student: {selectedRecord.studentName} ({selectedRecord.rollNumber})
+                      Student: <strong className="text-burgundy-950">{selectedRecord.studentName}</strong> ({selectedRecord.rollNumber})
                     </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-charcoal-700 uppercase tracking-wider mb-1">
-                      Actual Return Date
-                    </label>
-                    <input
-                      type="date"
-                      value={returnDate}
-                      onChange={(e) => setReturnDate(e.target.value)}
-                      className="w-full text-xs font-medium p-3 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20"
-                    />
+                    <p className="text-charcoal-500 text-[10px]">
+                      Issue Date: {selectedRecord.issueDate} • Due Date: {selectedRecord.dueDate}
+                    </p>
                   </div>
 
                   {/* Overdue & Fine Computation Card */}
@@ -280,8 +370,8 @@ export default function AdminReturnBookPage() {
                   </div>
                 </div>
               ) : (
-                <div className="py-16 text-center text-xs text-charcoal-400">
-                  Select an active loan from the left list to calculate returns and overdue fines.
+                <div className="py-6 text-center text-xs text-charcoal-400 bg-[#FAF7F7] rounded-2xl border border-dashed border-burgundy-100">
+                  Select an active loan from the left list or type Student Name and Book ID to clear loan.
                 </div>
               )}
             </div>
@@ -289,13 +379,142 @@ export default function AdminReturnBookPage() {
             <button
               onClick={handleReturnSubmit}
               disabled={!selectedRecord}
-              className="mt-6 w-full py-3.5 bg-gradient-to-r from-burgundy-900 to-burgundy-800 hover:from-burgundy-800 hover:to-burgundy-900 text-white rounded-2xl text-xs font-bold shadow-burgundy-glow transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center gap-2"
+              className="mt-6 w-full py-3.5 bg-gradient-to-r from-burgundy-900 to-burgundy-800 hover:from-burgundy-800 hover:to-burgundy-900 text-white rounded-2xl text-xs font-bold shadow-burgundy-glow transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer"
             >
               <RotateCcw size={16} />
               <span>Confirm & Process Return</span>
             </button>
           </div>
         </div>
+
+        {/* ========================================================================= */}
+        {/* BOOK RETURN HISTORY SECTION (DYNAMIC SUPABASE RETURN RECORDS)             */}
+        {/* ========================================================================= */}
+        <section className="bg-white rounded-3xl p-5 sm:p-6 border border-burgundy-100 shadow-soft space-y-4">
+          {/* Header & KPI Summary */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-burgundy-50">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-emerald-700 text-white flex items-center justify-center shadow-sm shrink-0">
+                <RotateCcw size={16} />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-extrabold text-charcoal-900">
+                    Book Return History
+                  </h3>
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    Total Returned: {totalReturnedCount}
+                  </span>
+                </div>
+                <p className="text-xs text-charcoal-500">
+                  Audit log of all books checked-in and restored to library inventory
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Search inside Return History */}
+            <div className="relative w-full sm:w-72">
+              <Search size={15} className="absolute left-3.5 top-3 text-charcoal-400" />
+              <input
+                type="text"
+                value={returnHistorySearch}
+                onChange={(e) => setReturnHistorySearch(e.target.value)}
+                placeholder="Search returned books, student, roll..."
+                className="w-full text-xs pl-9 pr-4 py-2 rounded-2xl bg-[#FAF7F7] border border-burgundy-100 focus:outline-none focus:ring-2 focus:ring-burgundy-700/20 text-charcoal-900"
+              />
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="overflow-x-auto rounded-2xl border border-burgundy-100">
+            <table className="w-full text-left text-xs text-charcoal-700">
+              <thead className="bg-[#FAF7F7] border-b border-burgundy-100 text-[11px] font-extrabold uppercase tracking-wider text-charcoal-600">
+                <tr>
+                  <th className="py-3 px-4">Student Name</th>
+                  <th className="py-3 px-4">Book Name</th>
+                  <th className="py-3 px-3">Issue Date</th>
+                  <th className="py-3 px-3">Due Date</th>
+                  <th className="py-3 px-3">Actual Return Date</th>
+                  <th className="py-3 px-3 text-center">Return Status</th>
+                  <th className="py-3 px-4">Fine / Remarks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-burgundy-50">
+                {filteredReturnHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-10 text-center text-charcoal-400">
+                      No returned book records found matching your query.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredReturnHistory.map((rec) => {
+                    const isLate = (rec.fineAmount && rec.fineAmount > 0) || (rec.dueDate && rec.returnDate && rec.returnDate > rec.dueDate);
+
+                    return (
+                      <tr key={rec.id} className="hover:bg-burgundy-50/40 transition-colors">
+                        {/* Student Name */}
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-charcoal-900 flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center justify-center shrink-0">
+                              {rec.studentName ? rec.studentName[0] : 'S'}
+                            </span>
+                            <div>
+                              <p className="truncate max-w-[150px]">{rec.studentName}</p>
+                              {rec.rollNumber && rec.rollNumber !== 'N/A' && (
+                                <p className="text-[10px] text-charcoal-400 font-mono">{rec.rollNumber}</p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Book Name */}
+                        <td className="py-3 px-4">
+                          <span className="font-semibold text-charcoal-900 block max-w-[220px] truncate" title={rec.bookTitle}>
+                            {rec.bookTitle}
+                          </span>
+                          <span className="text-[10px] font-mono text-burgundy-900">ID: #{rec.bookId}</span>
+                        </td>
+
+                        {/* Issue Date */}
+                        <td className="py-3 px-3 whitespace-nowrap text-charcoal-600">
+                          {rec.issueDate}
+                        </td>
+
+                        {/* Due Date */}
+                        <td className="py-3 px-3 whitespace-nowrap font-medium text-charcoal-700">
+                          {rec.dueDate}
+                        </td>
+
+                        {/* Actual Return Date */}
+                        <td className="py-3 px-3 whitespace-nowrap font-bold text-emerald-800">
+                          {rec.returnDate || 'Returned'}
+                        </td>
+
+                        {/* Return Status */}
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                          {isLate ? (
+                            <Badge variant="warning" size="sm" dot>Returned Late</Badge>
+                          ) : (
+                            <Badge variant="success" size="sm" dot>Returned (On Time)</Badge>
+                          )}
+                        </td>
+
+                        {/* Fine / Remarks */}
+                        <td className="py-3 px-4 text-charcoal-600 max-w-[180px] truncate">
+                          {rec.fineAmount && rec.fineAmount > 0 ? (
+                            <span className="text-rose-700 font-bold">${rec.fineAmount} Fine Assessed</span>
+                          ) : (
+                            <span className="text-charcoal-400">No Fines • Checked in</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </main>
     </div>
   );

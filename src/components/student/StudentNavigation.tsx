@@ -18,7 +18,6 @@ import {
   Sparkles,
   ChevronRight,
   Layers,
-  DoorOpen,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLibrary } from '@/context/LibraryContext';
@@ -54,7 +53,6 @@ export const StudentNavigation: React.FC = () => {
     { name: 'Books', href: '/student/my-books', icon: BookMarked, badge: myBorrows },
     { name: 'Pre Book', href: '/student/pre-bookings', icon: BookmarkCheck, badge: myPreBooks },
     { name: 'Membership Card', href: '/student/membership', icon: CreditCard },
-    { name: 'Library Attendance', href: '/student/attendance', icon: DoorOpen },
     { name: 'Fines & Dues', href: '/student/fines', icon: Receipt, badge: myUnpaidFines },
     { name: 'Borrowing History', href: '/student/history', icon: History },
   ];
@@ -86,14 +84,6 @@ export const StudentNavigation: React.FC = () => {
       icon: CreditCard,
       badge: null,
       color: 'bg-rose-50 text-rose-900 border-rose-200',
-    },
-    {
-      name: 'Library Entry / Exit',
-      desc: 'Scan Roll Number or Face to record library attendance',
-      href: '/student/attendance',
-      icon: DoorOpen,
-      badge: null,
-      color: 'bg-emerald-50 text-emerald-900 border-emerald-200',
     },
     {
       name: 'Books',

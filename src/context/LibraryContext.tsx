@@ -90,8 +90,16 @@ interface LibraryContextType {
   refreshStudents: () => Promise<void>;
 
   // Issue & Return
-  issueBook: (studentId: string, bookId: string, dueDate: string, remarks?: string) => { success: boolean; message: string };
+  issueBook: (
+    studentId: string,
+    bookId: string,
+    dueDate: string,
+    remarks?: string,
+    fromDate?: string,
+    studentName?: string
+  ) => Promise<{ success: boolean; message: string }>;
   returnBook: (borrowId: string, returnDate?: string) => { success: boolean; fineCalculated: number };
+  refreshBookIssues: () => Promise<void>;
 
   // Pre-Bookings
   requestPreBook: (studentId: string, bookId: string, notes?: string) => { success: boolean; message: string };
@@ -392,6 +400,50 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
+  const refreshBookIssues = async () => {
+    try {
+      const res = await fetch('/api/book-issues');
+      const data = await res.json().catch(() => null);
+      if (data?.success && Array.isArray(data.issues)) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const mapped: BorrowRecord[] = data.issues.map((row: any) => {
+          const isReturned = row.return_status === 'Returned' || !!row.return_date;
+          const dueStr = row.due_date ? String(row.due_date).split('T')[0] : '';
+          const isOverdue = !isReturned && dueStr && dueStr < todayStr;
+          const returnDateStr = row.return_date ? String(row.return_date).split('T')[0] : undefined;
+          const fineAmount = Number(row.fine_amount || 0);
+
+          return {
+            id: String(row.id),
+            studentId: row.student_id || (row.roll_number ? `STU-${row.roll_number}` : `STU-${row.id}`),
+            studentName: row.student_name || 'Student Member',
+            rollNumber: row.roll_number || 'N/A',
+            bookId: String(row.book_id),
+            bookTitle: row.book_title || `Book #${row.book_id}`,
+            bookCover: row.book_cover || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=600&auto=format&fit=crop',
+            issueDate: row.issue_date ? String(row.issue_date).split('T')[0] : todayStr,
+            dueDate: dueStr,
+            returnDate: returnDateStr,
+            status: isReturned ? ('returned' as const) : isOverdue ? ('overdue' as const) : ('borrowed' as const),
+            fineAmount,
+            fineStatus: fineAmount > 0 ? (isReturned ? ('paid' as const) : ('unpaid' as const)) : ('none' as const),
+            remarks: row.loan_remarks || 'Standard Academic Term Loan',
+          };
+        });
+
+        if (mapped.length > 0) {
+          setBorrowRecords((prev) => {
+            const serverIds = new Set(mapped.map((m) => m.id));
+            const localOnly = prev.filter((p) => !serverIds.has(p.id));
+            return [...mapped, ...localOnly];
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Notice loading book issues from database:', e);
+    }
+  };
+
   const updateSettings = async (newSettings: Partial<InstitutionSettings>): Promise<boolean> => {
     try {
       const updated = { ...settings, ...newSettings };
@@ -449,10 +501,12 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshSettings();
     refreshPreBookings();
     refreshMemberships();
+    refreshBookIssues();
 
     // Periodic synchronization across portals (Admin <-> Student) every 4 seconds
     const syncInterval = setInterval(() => {
       refreshMemberships();
+      refreshBookIssues();
 
       fetch('/api/pre-bookings')
         .then((res) => res.json())
@@ -975,22 +1029,66 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return { success: true, message: 'Password updated successfully in Supabase Authentication!' };
   };
 
-  // Issue Book
-  const issueBook = (studentId: string, bookId: string, dueDate: string, remarks?: string) => {
-    const student = students.find(s => s.studentId === studentId || s.id === studentId);
-    const book = books.find(b => b.id === bookId);
+  // Issue Book: Saves to book_issues table and decrements Available Copies in "Books" table
+  const issueBook = async (
+    studentId: string,
+    bookId: string,
+    dueDate: string,
+    remarks?: string,
+    fromDate?: string,
+    studentName?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    // 1. Resolve student entity or manual student name
+    const student = students.find(
+      s => s.studentId === studentId || s.id === studentId || s.name.toLowerCase() === studentId.toLowerCase()
+    );
+    const resolvedStudentName = (studentName || (student ? student.name : studentId) || '').trim();
 
-    if (!student) return { success: false, message: 'Selected student does not exist.' };
-    if (!book) return { success: false, message: 'Selected book does not exist.' };
-    if (book.availableQuantity <= 0) return { success: false, message: 'No copies of this book are currently available.' };
+    if (!resolvedStudentName) {
+      return { success: false, message: 'Please provide a valid Student Name.' };
+    }
 
-    const issueDateStr = new Date().toISOString().split('T')[0];
+    // 2. Resolve book from catalog
+    const book = books.find(
+      b => b.id === bookId || String(b.id) === String(bookId) || b.isbn === bookId || b.title.toLowerCase() === bookId.toLowerCase()
+    );
 
+    if (!book) {
+      return { success: false, message: `Selected book with ID "${bookId}" was not found in the catalogue.` };
+    }
+
+    // 3. Strict Available Copies validation: Block issue if Available Copies is 0
+    if (book.availableQuantity <= 0) {
+      return {
+        success: false,
+        message: `Cannot issue book: "${book.title}" has 0 available copies remaining (Available Copies = 0).`,
+      };
+    }
+
+    // 4. Calculate decremented Available Copies (exact -1, no negatives)
+    const newAvailableCopies = Math.max(0, book.availableQuantity - 1);
+    const issueDateStr = fromDate || new Date().toISOString().split('T')[0];
+    const finalRemarks = remarks || 'Standard Academic Term Loan';
+
+    // 5. Update local React state for instantaneous UI feedback
+    setBooks(prev =>
+      prev.map(b =>
+        b.id === book.id
+          ? {
+              ...b,
+              availableQuantity: newAvailableCopies,
+              status: newAvailableCopies > 0 ? 'available' : 'borrowed',
+            }
+          : b
+      )
+    );
+
+    // 6. Record in BorrowRecords for Admin Dashboard & Student Portal
     const newRecord: BorrowRecord = {
       id: `br-${Date.now()}`,
-      studentId: student.studentId,
-      studentName: student.name,
-      rollNumber: student.rollNumber,
+      studentId: student?.studentId || (studentId ? String(studentId) : `STU-MANUAL-${Date.now()}`),
+      studentName: resolvedStudentName,
+      rollNumber: student?.rollNumber || 'N/A',
       bookId: book.id,
       bookTitle: book.title,
       bookCover: book.coverImage,
@@ -999,33 +1097,100 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       status: 'borrowed',
       fineAmount: 0,
       fineStatus: 'none',
-      remarks: remarks || 'Issued by Librarian'
+      remarks: finalRemarks,
     };
-
-    // Decrease book available count
-    setBooks(prev =>
-      prev.map(b => (b.id === book.id ? { ...b, availableQuantity: b.availableQuantity - 1 } : b))
-    );
-
-    // Add record
     setBorrowRecords(prev => [newRecord, ...prev]);
 
-    // Send notification
+    // 7. Send notification
     setNotifications(prev => [
       {
         id: `notif-${Date.now()}`,
         recipientType: 'student',
-        studentId: student.studentId,
+        studentId: student?.studentId || 'all',
         title: 'Book Issued Successfully',
-        message: `"${book.title}" has been issued to you. Due date: ${dueDate}.`,
+        message: `"${book.title}" has been issued to ${resolvedStudentName}. Due date: ${dueDate}. Remaining available copies: ${newAvailableCopies}.`,
         timestamp: 'Just now',
         read: false,
-        type: 'success'
+        type: 'success',
       },
-      ...prev
+      ...prev,
     ]);
 
-    return { success: true, message: `Successfully issued "${book.title}" to ${student.name}.` };
+    // 8. Persist to server API: updates existing "Books" table and inserts into "book_issues"
+    try {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch('/api/book-issues', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({
+          studentName: resolvedStudentName,
+          bookId: book.id,
+          fromDate: issueDateStr,
+          dueDate,
+          remarks: finalRemarks,
+          studentId: student?.studentId || null,
+          rollNumber: student?.rollNumber || null,
+          bookTitle: book.title,
+          availableQuantity: book.availableQuantity,
+        }),
+      });
+
+      const apiResult = await res.json().catch(() => null);
+      if (apiResult && !apiResult.success && res.status >= 400) {
+        // Rollback state if server rejected (e.g. out of stock on server)
+        setBooks(prev =>
+          prev.map(b => (b.id === book.id ? { ...b, availableQuantity: book.availableQuantity } : b))
+        );
+        return { success: false, message: apiResult.message || 'Failed to issue book in database.' };
+      }
+    } catch (apiErr) {
+      console.warn('Notice issuing book via API:', apiErr);
+    }
+
+    // 9. Direct Supabase sync if client connection is active
+    try {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        safeSupabaseSync(async () => {
+          let updateQuery = supabase.from('Books').update({ 'Available Copies': newAvailableCopies });
+          if (!isNaN(Number(book.id))) {
+            updateQuery = updateQuery.eq('id', Number(book.id));
+          } else {
+            updateQuery = updateQuery.eq('id', book.id);
+          }
+          await updateQuery;
+
+          await supabase.from('book_issues').insert([
+            {
+              student_name: resolvedStudentName,
+              book_id: String(book.id),
+              from_date: issueDateStr,
+              issue_date: issueDateStr,
+              due_date: dueDate,
+              loan_remarks: finalRemarks,
+              remarks: finalRemarks,
+              status: 'borrowed',
+              student_id: student?.studentId || null,
+              roll_number: student?.rollNumber || null,
+              book_title: book.title,
+            },
+          ]);
+        });
+      }
+    } catch (supaErr) {
+      console.warn('Notice direct Supabase update in issueBook:', supaErr);
+    }
+
+    refreshBookIssues();
+    refreshBooks();
+
+    return {
+      success: true,
+      message: `Successfully issued "${book.title}" to ${resolvedStudentName}. Available copies reduced from ${book.availableQuantity} to ${newAvailableCopies}.`,
+    };
   };
 
   // Return Book
@@ -1092,6 +1257,23 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ...prev
       ]);
     }
+
+    // Persist return to Supabase book_issues and update Books table availability
+    fetch('/api/book-issues', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: borrowId,
+        returnDate: returnDateStr,
+        fineAmount,
+        returnRemarks: overdueDays > 0 ? `Late return (${overdueDays} days overdue)` : 'Returned on time',
+      }),
+    })
+      .then(() => {
+        refreshBookIssues();
+        refreshBooks();
+      })
+      .catch(err => console.warn('Server notice updating return:', err));
 
     return { success: true, fineCalculated: fineAmount };
   };
@@ -1528,6 +1710,7 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         refreshStudents,
         issueBook,
         returnBook,
+        refreshBookIssues,
         requestPreBook,
         updatePreBookStatus,
         applyForMembership,
